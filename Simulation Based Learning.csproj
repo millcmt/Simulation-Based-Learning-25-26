@@ -80,6 +80,8 @@
       <DependentUpon>AdminDashboard.aspx</DependentUpon>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Repositories\DecisionRepository.cs" />
+    <Compile Include="Repositories\DialogueRepository.cs" />
     <Compile Include="Repositories\PhaseRepository.cs" />
     <Compile Include="Repositories\SceneRepository.cs" />
     <Compile Include="Repositories\SimulationRepository.cs" />

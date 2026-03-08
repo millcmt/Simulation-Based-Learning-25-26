@@ -56,6 +56,46 @@ namespace Simulation_Based_Learning.Repositories
             }
         }
 
+        public DataRow GetPhaseTemplateById(int templateID)
+        {
+            using (SqlConnection con = new SqlConnection(_connStr))
+            {
+                string query = "SELECT * FROM PhaseTemplate WHERE PhaseTemplateID=@ID";
+
+                SqlDataAdapter da = new SqlDataAdapter(query, con);
+                da.SelectCommand.Parameters.AddWithValue("@ID", templateID);
+
+                DataTable dt = new DataTable();
+                da.Fill(dt);
+
+                if (dt.Rows.Count > 0)
+                    return dt.Rows[0];
+
+                return null;
+            }
+        }
+
+        public void UpdatePhaseTemplate(int id, string title, string objective)
+        {
+            using (SqlConnection con = new SqlConnection(_connStr))
+            {
+                con.Open();
+
+                string query = @"
+        UPDATE PhaseTemplate
+        SET PhaseTitle=@Title,
+            Objective=@Objective
+        WHERE PhaseTemplateID=@ID";
+
+                SqlCommand cmd = new SqlCommand(query, con);
+
+                cmd.Parameters.AddWithValue("@Title", title);
+                cmd.Parameters.AddWithValue("@Objective", objective);
+                cmd.Parameters.AddWithValue("@ID", id);
+
+                cmd.ExecuteNonQuery();
+            }
+        }
         public int CreatePhaseTemplate(string title, string objective)
         {
             using (SqlConnection con = new SqlConnection(_connStr))
