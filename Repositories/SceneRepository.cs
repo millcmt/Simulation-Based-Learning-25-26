@@ -30,6 +30,7 @@ namespace Simulation_Based_Learning.Repositories
                 pt.PhaseTitle,
                 s.SceneID,
                 s.SceneTitle,
+                s.VideoPath,
                 s.DisplayOrder
             FROM SimulationPhase sp
             INNER JOIN PhaseTemplate pt 
@@ -49,21 +50,44 @@ namespace Simulation_Based_Learning.Repositories
             }
         }
 
-        public void CreateScene(int phaseTemplateID, string title, int order)
+        public void CreateScene(int phaseTemplateID, string title, string videoPath, int order)
         {
             using (SqlConnection con = new SqlConnection(_connStr))
             {
                 con.Open();
 
                 string query = @"
-            INSERT INTO Scene
-            (PhaseTemplateID, SceneTitle, DisplayOrder)
-            VALUES (@PhaseTemplateID, @Title, @Order)";
+        INSERT INTO Scene
+        (PhaseTemplateID, SceneTitle, VideoPath, DisplayOrder)
+        VALUES (@PhaseTemplateID, @Title, @VideoPath, @Order)";
 
                 SqlCommand cmd = new SqlCommand(query, con);
+
                 cmd.Parameters.AddWithValue("@PhaseTemplateID", phaseTemplateID);
                 cmd.Parameters.AddWithValue("@Title", title);
+                cmd.Parameters.AddWithValue("@VideoPath", videoPath);
                 cmd.Parameters.AddWithValue("@Order", order);
+
+                cmd.ExecuteNonQuery();
+            }
+        }
+        public void UpdateScene(int sceneID, string title, string videoPath)
+        {
+            using (SqlConnection con = new SqlConnection(_connStr))
+            {
+                con.Open();
+
+                string query = @"
+        UPDATE Scene
+        SET SceneTitle=@Title,
+            VideoPath=@VideoPath
+        WHERE SceneID=@ID";
+
+                SqlCommand cmd = new SqlCommand(query, con);
+
+                cmd.Parameters.AddWithValue("@Title", title);
+                cmd.Parameters.AddWithValue("@VideoPath", videoPath);
+                cmd.Parameters.AddWithValue("@ID", sceneID);
 
                 cmd.ExecuteNonQuery();
             }
@@ -76,6 +100,7 @@ namespace Simulation_Based_Learning.Repositories
                 string query = @"
                     SELECT SceneID,
                        SceneTitle,
+                       VideoPath,
                        DisplayOrder
                 FROM Scene
                 WHERE PhaseTemplateID = @PhaseTemplateID
@@ -247,26 +272,7 @@ namespace Simulation_Based_Learning.Repositories
             }
         }
 
-        public void UpdateScene(int sceneID, string title)
-        {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
-
-                string query = @"
-        UPDATE Scene
-        SET SceneTitle=@Title
-        WHERE SceneID=@ID";
-
-                SqlCommand cmd = new SqlCommand(query, con);
-
-                cmd.Parameters.AddWithValue("@Title", title);
-                cmd.Parameters.AddWithValue("@ID", sceneID);
-
-                cmd.ExecuteNonQuery();
-            }
-        }
-
+        
 
 
     }

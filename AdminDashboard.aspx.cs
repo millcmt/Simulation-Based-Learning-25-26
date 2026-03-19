@@ -1,13 +1,8 @@
 ﻿using Simulation_Based_Learning.Repositories;
-using Simulation_Based_Learning.Repositories;
 using System;
-using System.Configuration;
 using System.Data;
-using System.Data.SqlClient;
-using System.Net.NetworkInformation;
 using System.Web.UI;
 using System.Web.UI.WebControls;
-using System.Xml.Serialization;
 
 namespace Simulation_Based_Learning
 {
@@ -21,6 +16,12 @@ namespace Simulation_Based_Learning
         private SceneRepository sceneRepo = new SceneRepository();
         private DialogueRepository dialogueRepo = new DialogueRepository();
         private DecisionRepository DecisionRepo = new DecisionRepository();
+
+
+
+
+
+
 
         //************************************************************
         // Page initialization and data loading
@@ -90,17 +91,19 @@ namespace Simulation_Based_Learning
 
             pnlDecisionPoints.Visible = true;
         }
-        //
+        // Method to load options for a selected decision point
         void LoadOptions(int decisionID)
         {
             gvOptions.DataSource = DecisionRepo.GetOptions(decisionID);
             gvOptions.DataBind();
         }
+        // Method to load attribute effects for a selected option
         void LoadEffects(int optionID)
         {
             gvEffects.DataSource = DecisionRepo.GetAttributeEffects(optionID);
             gvEffects.DataBind();
         }
+        // Method to load attributes into the GridView and dropdown list
         void LoadAttributes()
         {
             gvAttributes.DataSource = DecisionRepo.GetAttributes();
@@ -278,7 +281,7 @@ namespace Simulation_Based_Learning
                 if (scene != null)
                 {
                     txtSceneTitle.Text = scene["SceneTitle"].ToString();
-
+                    txtVideoPath.Text = scene["VideoPath"].ToString();
                     ViewState["EditingSceneID"] = sceneID;
 
                     btnAddScene.Text = "Update Scene";
@@ -413,7 +416,7 @@ namespace Simulation_Based_Learning
                 txtOptionText.Text = gvOptions.Rows[index].Cells[1].Text;
             }
         }
-        //
+        // Event handler for deleting an attribute or editing it from the GridView
         protected void gvAttributes_RowCommand(object sender, GridViewCommandEventArgs e)
         {
             int index = Convert.ToInt32(e.CommandArgument);
@@ -437,6 +440,7 @@ namespace Simulation_Based_Learning
                     gvAttributes.Rows[index].Cells[0].Text;
             }
         }
+        // Event handler for deleting an attribute effect from the GridView
         protected void gvEffects_RowCommand(object sender, GridViewCommandEventArgs e)
         {
             int index = Convert.ToInt32(e.CommandArgument);
@@ -452,6 +456,9 @@ namespace Simulation_Based_Learning
                 LoadEffects((int)ViewState["CurrentOptionID"]);
             }
         }
+
+
+
 
 
 
@@ -526,6 +533,7 @@ namespace Simulation_Based_Learning
             int phaseTemplateID = (int)ViewState["SelectedPhaseTemplateID"];
 
             string title = txtSceneTitle.Text.Trim();
+            string videoPath = txtVideoPath.Text.Trim();
 
             if (string.IsNullOrEmpty(title))
                 return;
@@ -534,7 +542,7 @@ namespace Simulation_Based_Learning
             {
                 int sceneID = (int)ViewState["EditingSceneID"];
 
-                sceneRepo.UpdateScene(sceneID, title);
+                sceneRepo.UpdateScene(sceneID, title, videoPath);
 
                 ViewState["EditingSceneID"] = null;
 
@@ -544,10 +552,11 @@ namespace Simulation_Based_Learning
             {
                 int nextOrder = sceneRepo.GetNextSceneOrder(phaseTemplateID);
 
-                sceneRepo.CreateScene(phaseTemplateID, title, nextOrder);
+                sceneRepo.CreateScene(phaseTemplateID, title, videoPath, nextOrder);
             }
 
             txtSceneTitle.Text = "";
+            txtVideoPath.Text = "";
 
             LoadScenesForPhase(phaseTemplateID);
         }
@@ -618,6 +627,7 @@ namespace Simulation_Based_Learning
 
             LoadDecisionPoints(sceneID);
         }
+        // Event handler for adding an attribute to the system
         protected void btnAddAttribute_Click(object sender, EventArgs e)
         {
             string name = txtAttributeName.Text;
@@ -641,6 +651,7 @@ namespace Simulation_Based_Learning
 
             LoadAttributes();
         }
+        // Event handler for adding an option to the selected decision point
         protected void btnAddOption_Click(object sender, EventArgs e)
         {
             int decisionID = (int)ViewState["CurrentDecisionID"];
@@ -668,6 +679,7 @@ namespace Simulation_Based_Learning
 
             LoadOptions(decisionID);
         }
+        // Event handler for adding an attribute effect to the selected option  
         protected void btnAddEffect_Click(object sender, EventArgs e)
         {
             int optionID = (int)ViewState["CurrentOptionID"];
@@ -680,6 +692,19 @@ namespace Simulation_Based_Learning
 
             LoadEffects(optionID);
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         //************************************************************
         // Event handlers for navigation buttons
@@ -780,6 +805,7 @@ namespace Simulation_Based_Learning
                     break;
             }
         }
+
 
         //header buttons to switch between different panels of the dashboard
         protected void ShowSimulations(object sender, EventArgs e) { SetPanel("Simulations"); }

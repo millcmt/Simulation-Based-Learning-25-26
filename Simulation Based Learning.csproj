@@ -68,7 +68,20 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="AdminDashboard.aspx" />
+    <Content Include="Authentication.aspx" />
+    <Content Include="Assets\Char1.jpeg" />
+    <Content Include="Assets\Char2.jpeg" />
+    <Content Include="Assets\Char3.jpeg" />
+    <Content Include="Assets\Char4.jpeg" />
+    <Content Include="Assets\cursor.cur" />
+    <Content Include="Assets\particles.gif" />
+    <Content Include="Assets\sounds\click.wav" />
+    <Content Include="Assets\sounds\hover.wav" />
+    <Content Include="Assets\sounds\printer.mp3" />
     <Content Include="Main.css" />
+    <Content Include="PlayThrough.aspx" />
+    <Content Include="PlayThrough.css" />
+    <Content Include="Report.aspx" />
     <Content Include="Web.config" />
   </ItemGroup>
   <ItemGroup>
@@ -79,12 +92,36 @@
     <Compile Include="AdminDashboard.aspx.designer.cs">
       <DependentUpon>AdminDashboard.aspx</DependentUpon>
     </Compile>
+    <Compile Include="Authentication.aspx.cs">
+      <DependentUpon>Authentication.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Authentication.aspx.designer.cs">
+      <DependentUpon>Authentication.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="PlayThrough.aspx.cs">
+      <DependentUpon>PlayThrough.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="PlayThrough.aspx.designer.cs">
+      <DependentUpon>PlayThrough.aspx</DependentUpon>
+    </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Report.aspx.cs">
+      <DependentUpon>Report.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Report.aspx.designer.cs">
+      <DependentUpon>Report.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Repositories\BaseRepository.cs" />
     <Compile Include="Repositories\DecisionRepository.cs" />
     <Compile Include="Repositories\DialogueRepository.cs" />
     <Compile Include="Repositories\PhaseRepository.cs" />
+    <Compile Include="Repositories\PlaythroughRepository.cs" />
     <Compile Include="Repositories\SceneRepository.cs" />
     <Compile Include="Repositories\SimulationRepository.cs" />
+    <Compile Include="Repositories\UserRepository.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -95,6 +132,7 @@
       <DependentUpon>Web.config</DependentUpon>
     </None>
   </ItemGroup>
+  <ItemGroup />
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
     <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
