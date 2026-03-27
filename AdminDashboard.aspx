@@ -184,7 +184,12 @@
            <asp:TextBox ID="txtVideoPath"
                 runat="server"
                 CssClass="form-control"
-                Placeholder="MP4 Video Path (optional)" />
+                Placeholder="MP3 Video Path (optional)" />
+
+            <asp:TextBox ID="txtImagePath"
+                runat="server"
+                CssClass="form-control"
+                Placeholder="Scene background / Scene Image" />
 
             <asp:Button ID="btnAddScene"
                 runat="server"
@@ -200,7 +205,7 @@
         <asp:GridView ID="gvScenes"
             runat="server"
             AutoGenerateColumns="false"
-            DataKeyNames="SceneID,VideoPath"
+            DataKeyNames="SceneID,VideoPath,ImagePath"
             CssClass="table"
             OnRowCommand="gvScenes_RowCommand">
 
@@ -208,6 +213,7 @@
 
                 <asp:BoundField DataField="SceneTitle" HeaderText="Scene Title" />
                 <asp:BoundField DataField="VideoPath" HeaderText="Video" />
+                <asp:BoundField DataField="ImagePath" HeaderText="Image" />
                 <asp:BoundField DataField="DisplayOrder" HeaderText="Order" />
 
                 <%-- Reorder --%>

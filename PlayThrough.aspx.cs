@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.EnterpriseServices;
 using System.Linq;
 using System.Web;
 using System.Web.UI;
@@ -15,37 +16,43 @@ namespace Simulation_Based_Learning
         private SimulationRepository repo = new SimulationRepository();
         protected void Page_Load(object sender, EventArgs e)
         {
-            if (Session["SessionID"] != null)
-            {
-                int sessionID = Convert.ToInt32(Session["SessionID"]);
-
-                PlaythroughRepository repo = new PlaythroughRepository();
-                string status = repo.GetSessionStatus(sessionID);
-
-                if (status == "InProgress")
-                {
-                    LoadScene(sessionID);
-                    return;
-                }
-            }
             if (!IsPostBack)
             {
-                // Load available simulations
-                var simulations = repo.GetAllSimulations(); // returns List<Simulation>
+                var simulations = repo.GetAllSimulations();
                 ddlSimulations.DataSource = simulations;
                 ddlSimulations.DataTextField = "Title";
                 ddlSimulations.DataValueField = "SimulationID";
                 ddlSimulations.DataBind();
+            }
 
-                // Decide initial panel
+                if (Session["SessionID"] != null)
+            {
+                int sessionID = Convert.ToInt32(Session["SessionID"]);
+
+                PlaythroughRepository repo = new PlaythroughRepository();
+                DecisionRepository dRepo = new DecisionRepository();
+
+                // 🔥 Only auto-load scene on FIRST load
+                if (!IsPostBack)
+                {
+                    string status = repo.GetSessionStatus(sessionID);
+
+                    
+                    if (status == "InProgress")
+                    {
+                        
+                        LoadScene(sessionID);
+                        return;
+                        
+                    }                                      
+                }                
+            }
+
+            if (!IsPostBack)
+            {
                 if (Session["TeamID"] == null)
                 {
                     ShowPanel("Join");
-                }
-                else if (Session["SessionID"] != null)
-                {
-                    // Player already has a session → show Scene or Character
-                    ShowPanel("Character");
                 }
                 else
                 {
@@ -131,14 +138,42 @@ namespace Simulation_Based_Learning
 
             if (scene == null) return;
 
-            ShowPanel("Scene");
-
             lblSceneTitle.Text = scene["SceneTitle"].ToString();
             sceneSource.Src = scene["VideoPath"].ToString();
+            sceneImagePath.Src = scene["ImagePath"].ToString();
             sceneVideo.Attributes["load"] = "true";
             sceneVideo.Attributes["key"] = Guid.NewGuid().ToString();
-        }
 
+            // 🔥 LOAD DIALOGUE
+            int sceneID = (int)scene["SceneID"];
+            DataTable dialogue = repo.GetDialogueByScene(sceneID);
+            rptDialogue.DataSource = dialogue;
+            rptDialogue.DataBind();
+
+            ShowPanel("Scene");
+        }
+        protected string GetBubbleClass(string speaker)
+        {
+            // current player's character
+            string myCharacter = GetMyCharacter();
+
+            if (speaker == myCharacter)
+                return "chat-right"; // 🔥 YOU
+            else
+                return "chat-left"; // others
+        }
+        private string GetMyCharacter()
+        {
+            if (Session["SessionID"] == null || Session["UserID"] == null)
+                return "";
+
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+            int userID = Convert.ToInt32(Session["UserID"]);
+
+            PlaythroughRepository repo = new PlaythroughRepository();
+
+            return repo.GetPlayerCharacter(sessionID, userID);
+        }
         protected void btnStartSimulation_Click(object sender, EventArgs e)
         {
             int simulationID = int.Parse(ddlSimulations.SelectedValue);
@@ -162,6 +197,7 @@ namespace Simulation_Based_Learning
             PanelScene.Visible = false;
             PanelDecision.Visible = false;
 
+
             switch (panel)
             {
                 case "Join":
@@ -184,8 +220,22 @@ namespace Simulation_Based_Learning
                     PanelDecision.Visible = true;
                     break;
             }
+            ViewState["CurrentPanel"] = panel;
         }
+        protected void btnLogout_Click(object sender, EventArgs e)
+        {
+            // 🔥 Clear ALL session data
+            Session.Clear();
+            Session.Abandon();
 
+            // 🔥 Force full reload
+            Response.Redirect("Authentication.aspx");
+        }
+        protected void btnBack_Click(object sender, EventArgs e)
+        {
+            string panel = ViewState["CurrentPanel"]?.ToString();
+            ShowPanel("Join");
+        }
         protected void SelectCharacter(object sender, EventArgs e)
         {
             int teamID = Convert.ToInt32(Session["TeamID"]);
@@ -198,16 +248,22 @@ namespace Simulation_Based_Learning
 
             // Ensure session exists
             int sessionID;
-            if (Session["SessionID"] != null)
+            if (Session["SessionID"] == null)
             {
-                sessionID = Convert.ToInt32(Session["SessionID"]);
+                // Try to get existing session instead of creating
+                sessionID = repo.GetActiveSessionID(teamID);
+
+                if (sessionID == 0)
+                {
+                    lblCharacterStatus.Text = "Session not ready yet.";
+                    return;
+                }
+
+                Session["SessionID"] = sessionID;
             }
             else
             {
-                int simulationID = int.Parse(ddlSimulations.SelectedValue);
-                sessionID = repo.CreateSession(teamID, simulationID);
-                repo.UpdateSessionStatus(sessionID, "InProgress");
-                Session["SessionID"] = sessionID;
+                sessionID = Convert.ToInt32(Session["SessionID"]);
             }
 
             // Attempt to select the character
@@ -306,49 +362,75 @@ namespace Simulation_Based_Learning
             }
 
             int sessionID = Convert.ToInt32(Session["SessionID"]);
-            int playerID = Convert.ToInt32(Session["UserID"]);
+            int userID = Convert.ToInt32(Session["UserID"]);
             int optionID = int.Parse(rblOptions.SelectedValue);
 
             PlaythroughRepository pRepo = new PlaythroughRepository();
             DecisionRepository dRepo = new DecisionRepository();
 
-            // Get current scene
             DataRow currentScene = pRepo.GetCurrentScene(sessionID);
             if (currentScene == null) return;
 
             int sceneID = (int)currentScene["SceneID"];
 
-            // Get current decision point
+            //DataTable decisions = dRepo.GetDecisionPoints(sceneID);
+            //if (decisions.Rows.Count == 0) return;
+
+            //int decisionID = (int)decisions.Rows[0]["DecisionPointID"];
+            int decisionID = (int)dRepo.GetDecisionPoints(sceneID).Rows[0]["DecisionPointID"];
+
+            // ✅ ONLY SAVE
+            pRepo.SubmitPlayerDecision(sessionID, userID, decisionID, optionID);
+
+            lblDecisionStatus.Text = "Decision submitted. Waiting for others...";
+
+        }
+        protected void btnProceed_Click(object sender, EventArgs e)
+        {
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+
+            PlaythroughRepository pRepo = new PlaythroughRepository();
+            DecisionRepository dRepo = new DecisionRepository();
+
+            DataRow currentScene = pRepo.GetCurrentScene(sessionID);
+            int sceneID = (int)currentScene["SceneID"];
+
+
+            if (currentScene == null) return;
+
             DataTable decisions = dRepo.GetDecisionPoints(sceneID);
-            if (decisions.Rows.Count == 0) return;
 
-            int decisionID = (int)decisions.Rows[0]["DecisionPointID"];
-
-            // Submit player's decision using repository method
-            pRepo.SubmitPlayerDecision(sessionID, playerID, decisionID, optionID);
-
-            // Check if all players have submitted
-            if (pRepo.HaveAllPlayersDecided(sessionID, decisionID))
+            if (decisions.Rows.Count > 0)
             {
-                // Move to next scene
-                int nextSceneID = pRepo.GetNextSceneID(sessionID, sceneID);
-                if (nextSceneID > 0)
+                int decisionID = (int)decisions.Rows[0]["DecisionPointID"];
+
+                bool allDone = pRepo.HaveAllPlayersDecided(sessionID, decisionID);
+
+                if (!allDone)
                 {
-                    pRepo.SetCurrentScene(sessionID, nextSceneID);
-                    LoadScene(sessionID);
+                    lblDecisionStatus.Text = "Waiting for all players to submit decisions...syncing...";
+                    btnRefresh_Click(sender, e);
+                    return;
                 }
-                else
-                {
-                    // End simulation
-                    pRepo.UpdateSessionStatus(sessionID, "Completed");
-                    ShowPanel("Lobby"); // Or a "Simulation Complete" panel
-                }
+            }
+
+            // Move forward
+            int nextSceneID = pRepo.GetNextSceneID(sessionID, sceneID);
+
+            if (nextSceneID > 0)
+            {
+                pRepo.SetCurrentScene(sessionID, nextSceneID);
+                btnRefresh_Click(sender, e); // refresh for all users
             }
             else
             {
-                lblDecisionStatus.Text = "Waiting for other players to submit their decisions...";
+                pRepo.UpdateSessionStatus(sessionID, "Completed");
+                ShowPanel("Join");
+                btnRefresh_Click(sender, e); // also refresh here
             }
+            
         }
+
         protected override void RaisePostBackEvent(IPostBackEventHandler sourceControl, string eventArgument)
         {
             base.RaisePostBackEvent(sourceControl, eventArgument);
@@ -411,6 +493,10 @@ namespace Simulation_Based_Learning
                 }
             }
         }
+
+        
+
+
 
     }
 }

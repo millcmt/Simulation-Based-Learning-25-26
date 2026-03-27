@@ -22,17 +22,49 @@ namespace Simulation_Based_Learning.Repositories
 
         public int CreateSession(int teamID, int simulationID)
         {
-            using (var conn = new SqlConnection(_connStr))
-            using (var cmd = new SqlCommand("INSERT INTO PlaythroughSession (TeamID, SimulationID, Status) OUTPUT INSERTED.SessionID VALUES (@TeamID, @SimulationID, 'InProgress')", conn))
-            {
-                cmd.Parameters.AddWithValue("@TeamID", teamID);
-                cmd.Parameters.AddWithValue("@SimulationID", simulationID);
+            // 1️⃣ Check if session already exists
+            SqlCommand checkCmd = new SqlCommand(@"
+        SELECT TOP 1 SessionID
+        FROM PlaythroughSession
+        WHERE TeamID = @team
+        AND Status IN ('Waiting','InProgress')
+        ORDER BY CreatedDate DESC");
 
-                conn.Open();
-                int sessionID = (int)cmd.ExecuteScalar();
-                return sessionID;
-            }
+            checkCmd.Parameters.AddWithValue("@team", teamID);
+
+            object existing = ExecuteScalar(checkCmd);
+
+            if (existing != null)
+                return Convert.ToInt32(existing);
+
+            // 2️⃣ Create new session
+            SqlCommand insertCmd = new SqlCommand(@"
+        INSERT INTO PlaythroughSession (TeamID, SimulationID, Status)
+        OUTPUT INSERTED.SessionID
+        VALUES (@team, @sim, 'Waiting')");
+
+            insertCmd.Parameters.AddWithValue("@team", teamID);
+            insertCmd.Parameters.AddWithValue("@sim", simulationID);
+
+            return (int)ExecuteScalar(insertCmd);
         }
+
+        public int GetActiveSessionID(int teamID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+        SELECT TOP 1 SessionID
+        FROM PlaythroughSession
+        WHERE TeamID = @team
+        AND Status IN ('Waiting','InProgress')
+        ORDER BY CreatedDate DESC");
+
+            cmd.Parameters.AddWithValue("@team", teamID);
+
+            object result = ExecuteScalar(cmd);
+
+            return result != null ? Convert.ToInt32(result) : 0;
+        }
+
         public void UpdateSessionStatus(int sessionID, string status)
         {
             using (var conn = new SqlConnection(_connStr))
@@ -234,7 +266,32 @@ namespace Simulation_Based_Learning.Repositories
             // 3. No more phases → simulation finished
             return 0;
         }
+        public DataTable GetDialogueByScene(int sceneID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+        SELECT Speaker, Dialogue, DisplayOrder
+        FROM Dialogue
+        WHERE SceneID = @scene
+        ORDER BY DisplayOrder");
 
+            cmd.Parameters.AddWithValue("@scene", sceneID);
+
+            return ExecuteQuery(cmd);
+        }
+        public string GetPlayerCharacter(int sessionID, int userID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+        SELECT CharacterName
+        FROM CharacterSelection
+        WHERE SessionID = @session AND UserID = @user");
+
+            cmd.Parameters.AddWithValue("@session", sessionID);
+            cmd.Parameters.AddWithValue("@user", userID);
+
+            object result = ExecuteScalar(cmd);
+
+            return result?.ToString() ?? "";
+        }
         public void SetCurrentScene(int sessionID, int sceneID)
         {
             SqlCommand cmd = new SqlCommand(@"
@@ -249,34 +306,34 @@ namespace Simulation_Based_Learning.Repositories
         }
         public bool HaveAllPlayersDecided(int sessionID, int decisionID)
         {
-            // Get all players in this session's team
-            SqlCommand cmdPlayers = new SqlCommand(@"
+            SqlCommand cmd = new SqlCommand(@"
         SELECT COUNT(*) 
         FROM TeamMember tm
-        INNER JOIN PlaythroughSession ps ON tm.TeamID = ps.TeamID
-        WHERE ps.SessionID = @session");
-            cmdPlayers.Parameters.AddWithValue("@session", sessionID);
-            int totalPlayers = (int)ExecuteScalar(cmdPlayers);
+        INNER JOIN PlaythroughSession ps 
+            ON tm.TeamID = ps.TeamID
+        WHERE ps.SessionID = @session
+        AND tm.UserID NOT IN (
+            SELECT UserID 
+            FROM PlayerDecision 
+            WHERE SessionID = @session 
+            AND DecisionPointID = @decision
+        )");
 
-            // Get count of players who have submitted this decision
-            SqlCommand cmdDecisions = new SqlCommand(@"
-        SELECT COUNT(DISTINCT PlayerID) 
-        FROM PlayerDecision
-        WHERE SessionID = @session AND DecisionPointID = @decision");
-            cmdDecisions.Parameters.AddWithValue("@session", sessionID);
-            cmdDecisions.Parameters.AddWithValue("@decision", decisionID);
-            int submittedCount = (int)ExecuteScalar(cmdDecisions);
+            cmd.Parameters.AddWithValue("@session", sessionID);
+            cmd.Parameters.AddWithValue("@decision", decisionID);
 
-            return totalPlayers == submittedCount;
+            int playersNotSubmitted = (int)ExecuteScalar(cmd);
+
+            return playersNotSubmitted == 0;
         }
-        public bool SubmitPlayerDecision(int sessionID, int playerID, int decisionID, int optionID)
+        public bool SubmitPlayerDecision(int sessionID, int userID, int decisionID, int optionID)
         {
             // Check if this player already submitted for this decision
             SqlCommand cmdCheck = new SqlCommand(@"
         SELECT COUNT(*) FROM PlayerDecision 
-        WHERE SessionID=@session AND PlayerID=@player AND DecisionPointID=@decision");
+        WHERE SessionID=@session AND UserID=@user AND DecisionPointID=@decision");
             cmdCheck.Parameters.AddWithValue("@session", sessionID);
-            cmdCheck.Parameters.AddWithValue("@player", playerID);
+            cmdCheck.Parameters.AddWithValue("@user", userID);
             cmdCheck.Parameters.AddWithValue("@decision", decisionID);
 
             int alreadySubmitted = (int)ExecuteScalar(cmdCheck);
@@ -285,10 +342,10 @@ namespace Simulation_Based_Learning.Repositories
             {
                 // Insert the player's decision
                 SqlCommand cmdInsert = new SqlCommand(@"
-            INSERT INTO PlayerDecision (SessionID, PlayerID, DecisionPointID, OptionID)
-            VALUES (@session, @player, @decision, @option)");
+            INSERT INTO PlayerDecision (SessionID, UserID, DecisionPointID, OptionID)
+            VALUES (@session, @user, @decision, @option)");
                 cmdInsert.Parameters.AddWithValue("@session", sessionID);
-                cmdInsert.Parameters.AddWithValue("@player", playerID);
+                cmdInsert.Parameters.AddWithValue("@user", userID);
                 cmdInsert.Parameters.AddWithValue("@decision", decisionID);
                 cmdInsert.Parameters.AddWithValue("@option", optionID);
 

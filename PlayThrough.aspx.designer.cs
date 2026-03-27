@@ -24,6 +24,15 @@ namespace Simulation_Based_Learning
         protected global::System.Web.UI.HtmlControls.HtmlForm form1;
 
         /// <summary>
+        /// btnLogout control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.Button btnLogout;
+
+        /// <summary>
         /// PanelJoinTeam control.
         /// </summary>
         /// <remarks>
@@ -112,6 +121,15 @@ namespace Simulation_Based_Learning
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
         protected global::System.Web.UI.WebControls.DropDownList ddlSimulations;
+
+        /// <summary>
+        /// btnBack control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.Button btnBack;
 
         /// <summary>
         /// Button1 control.
@@ -210,7 +228,7 @@ namespace Simulation_Based_Learning
         /// Auto-generated field.
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
-        protected global::System.Web.UI.HtmlControls.HtmlVideo sceneVideo;
+        protected global::System.Web.UI.HtmlControls.HtmlAudio sceneVideo;
 
         /// <summary>
         /// sceneSource control.
@@ -220,6 +238,24 @@ namespace Simulation_Based_Learning
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
         protected global::System.Web.UI.HtmlControls.HtmlSource sceneSource;
+
+        /// <summary>
+        /// sceneImagePath control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.HtmlControls.HtmlImage sceneImagePath;
+
+        /// <summary>
+        /// rptDialogue control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.Repeater rptDialogue;
 
         /// <summary>
         /// btnContinue control.
@@ -240,6 +276,15 @@ namespace Simulation_Based_Learning
         protected global::System.Web.UI.WebControls.Panel PanelDecision;
 
         /// <summary>
+        /// Button2 control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.Button Button2;
+
+        /// <summary>
         /// lblDecisionQuestion control.
         /// </summary>
         /// <remarks>
@@ -247,6 +292,15 @@ namespace Simulation_Based_Learning
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
         protected global::System.Web.UI.WebControls.Label lblDecisionQuestion;
+
+        /// <summary>
+        /// hfWaiting control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.HiddenField hfWaiting;
 
         /// <summary>
         /// rblOptions control.
@@ -265,6 +319,15 @@ namespace Simulation_Based_Learning
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
         protected global::System.Web.UI.WebControls.Button btnSubmitDecision;
+
+        /// <summary>
+        /// btnProceed control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.Button btnProceed;
 
         /// <summary>
         /// lblDecisionStatus control.

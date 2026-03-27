@@ -68,6 +68,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="AdminDashboard.aspx" />
+    <Content Include="Assets\test1.mp3" />
     <Content Include="Authentication.aspx" />
     <Content Include="Assets\Char1.jpeg" />
     <Content Include="Assets\Char2.jpeg" />

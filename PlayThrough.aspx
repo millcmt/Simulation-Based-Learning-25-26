@@ -14,7 +14,7 @@
 <form id="form1" runat="server">
 
 <div class="simulation-container">
-
+    <asp:Button ID="btnLogout" runat="server" Text="Reset / Logout" OnClick="btnLogout_Click" CssClass="btn btn-danger" />
     <!-- JOIN TEAM PANEL -->
    <asp:Panel ID="PanelJoinTeam" runat="server" CssClass="panel-card join-panel">
 
@@ -93,10 +93,21 @@
         </div>
 
         <asp:DropDownList ID="ddlSimulations" runat="server" AutoPostBack="true">
-    
-</asp:DropDownList>
+        </asp:DropDownList>
+            
+
+        
 
 
+
+<br /><br />
+
+<asp:Button ID="btnBack"
+    runat="server"
+    Text="← Back"
+    CssClass="btn btn-secondary"
+    OnClick="btnBack_Click"
+    Visible="true" />
         
 <asp:Button 
     ID="Button1" 
@@ -138,9 +149,27 @@
             <asp:Label ID="lblSceneTitle" runat="server"/>
         </h2>
 
-        <video id="sceneVideo" runat="server" width="700" controls autoplay onended="onVideoEnd()">
+        <%--<video id="sceneVideo" runat="server" width="700" controls autoplay onended="onVideoEnd()">
             <source id="sceneSource" runat="server" type="video/mp4" />
-        </video>
+        </video>--%>
+
+       
+        <audio id="sceneVideo" runat="server" controls="controls" autoplay="autoplay" onended="onVideoEnd()">
+            <source id="sceneSource" runat="server" type="audio/mpeg" />
+        </audio>
+
+        
+        <img id="sceneImagePath" runat="server" width="700" src="sceneImagePath"/>
+
+        <asp:Repeater ID="rptDialogue" runat="server">
+            <ItemTemplate>
+                <div class='<%# GetBubbleClass(Eval("Speaker").ToString()) %>'>
+                    <strong><%# Eval("Speaker") %>:</strong><br />
+                    <%# Eval("Dialogue") %>
+                </div>
+            </ItemTemplate>
+        </asp:Repeater>
+
 
         <script>
             function onVideoEnd() {
@@ -159,11 +188,13 @@
 
 
     <!-- DECISION PANEL -->
+  
     <asp:Panel ID="PanelDecision" runat="server" Visible="false">
-
+          <asp:Button ID="Button2" runat="server" Text="Refresh" OnClick="btnRefresh_Click" />
     <h2>
         <asp:Label ID="lblDecisionQuestion" runat="server" />
     </h2>
+            <asp:HiddenField ID="hfWaiting" runat="server" Value="false" />
 
     <asp:RadioButtonList 
         ID="rblOptions" 
@@ -180,6 +211,13 @@
         CssClass="btn btn-success"
         OnClick="btnSubmitDecision_Click" />
 
+    <asp:Button 
+        ID="btnProceed" 
+        runat="server" 
+        Text="Proceed to Next Scene"
+        CssClass="btn btn-primary"
+        OnClick="btnProceed_Click" />
+
     <br /><br />
 
     <asp:Label ID="lblDecisionStatus" runat="server" ForeColor="Red" />
@@ -192,3 +230,4 @@
 
 </body>
 </html>
+

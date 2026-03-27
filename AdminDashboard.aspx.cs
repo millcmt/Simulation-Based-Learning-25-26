@@ -282,6 +282,7 @@ namespace Simulation_Based_Learning
                 {
                     txtSceneTitle.Text = scene["SceneTitle"].ToString();
                     txtVideoPath.Text = scene["VideoPath"].ToString();
+                    txtImagePath.Text = scene["ImagePath"].ToString();
                     ViewState["EditingSceneID"] = sceneID;
 
                     btnAddScene.Text = "Update Scene";
@@ -534,6 +535,7 @@ namespace Simulation_Based_Learning
 
             string title = txtSceneTitle.Text.Trim();
             string videoPath = txtVideoPath.Text.Trim();
+            string ImagePath = txtImagePath.Text.Trim();
 
             if (string.IsNullOrEmpty(title))
                 return;
@@ -542,7 +544,7 @@ namespace Simulation_Based_Learning
             {
                 int sceneID = (int)ViewState["EditingSceneID"];
 
-                sceneRepo.UpdateScene(sceneID, title, videoPath);
+                sceneRepo.UpdateScene(sceneID, title, videoPath, ImagePath);
 
                 ViewState["EditingSceneID"] = null;
 
@@ -552,11 +554,12 @@ namespace Simulation_Based_Learning
             {
                 int nextOrder = sceneRepo.GetNextSceneOrder(phaseTemplateID);
 
-                sceneRepo.CreateScene(phaseTemplateID, title, videoPath, nextOrder);
+                sceneRepo.CreateScene(phaseTemplateID, title, videoPath, ImagePath, nextOrder);
             }
 
             txtSceneTitle.Text = "";
             txtVideoPath.Text = "";
+            txtImagePath.Text = "";
 
             LoadScenesForPhase(phaseTemplateID);
         }
