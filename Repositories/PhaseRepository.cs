@@ -5,22 +5,12 @@ using System.Data.SqlClient;
 
 namespace Simulation_Based_Learning.Repositories
 {
-    public class PhaseRepository
+    public class PhaseRepository : BaseRepository
     {
-        private readonly string _connStr;
-
-        public PhaseRepository()
-        {
-            _connStr = ConfigurationManager
-                        .ConnectionStrings["SimDB"]
-                        .ConnectionString;
-        }
-
+        // Gets all phases for a given simulation, including template details, ordered by DisplayOrder
         public DataTable GetPhasesBySimulation(int simulationID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"
+            SqlCommand cmd = new SqlCommand(@"
             SELECT sp.SimulationPhaseID,
                    sp.PhaseTemplateID,
                    pt.PhaseTitle,
@@ -30,18 +20,14 @@ namespace Simulation_Based_Learning.Repositories
             INNER JOIN PhaseTemplate pt
                 ON sp.PhaseTemplateID = pt.PhaseTemplateID
             WHERE sp.SimulationID = @SimID
-            ORDER BY sp.DisplayOrder";
+            ORDER BY sp.DisplayOrder");
 
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
-                da.SelectCommand.Parameters.AddWithValue("@SimID", simulationID);
+            cmd.Parameters.AddWithValue("@SimID", simulationID);
 
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                return dt;
-            }
+            return ExecuteQuery(cmd);
         }
 
+        // Retrieves all phase templates with just ID and Title for dropdowns, ordered alphabetically
         public DataTable GetAllPhaseTemplates()
         {
             using (SqlConnection con = new SqlConnection(_connStr))
@@ -56,6 +42,7 @@ namespace Simulation_Based_Learning.Repositories
             }
         }
 
+        // Retrieves a single phase template by its ID, returns null if not found
         public DataRow GetPhaseTemplateById(int templateID)
         {
             using (SqlConnection con = new SqlConnection(_connStr))
@@ -75,91 +62,67 @@ namespace Simulation_Based_Learning.Repositories
             }
         }
 
+        // Updates the title and objective of an existing phase template
         public void UpdatePhaseTemplate(int id, string title, string objective)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
+            SqlCommand cmd = new SqlCommand(@"
+            UPDATE PhaseTemplate
+            SET PhaseTitle = @Title,
+                Objective = @Objective
+            WHERE PhaseTemplateID = @ID");
 
-                string query = @"
-        UPDATE PhaseTemplate
-        SET PhaseTitle=@Title,
-            Objective=@Objective
-        WHERE PhaseTemplateID=@ID";
+            cmd.Parameters.AddWithValue("@Title", title);
+            cmd.Parameters.AddWithValue("@Objective", objective);
+            cmd.Parameters.AddWithValue("@ID", id);
 
-                SqlCommand cmd = new SqlCommand(query, con);
-
-                cmd.Parameters.AddWithValue("@Title", title);
-                cmd.Parameters.AddWithValue("@Objective", objective);
-                cmd.Parameters.AddWithValue("@ID", id);
-
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
+
+        // Creates a new phase template and returns its ID
         public int CreatePhaseTemplate(string title, string objective)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
-
-                string query = @"
+            SqlCommand cmd = new SqlCommand(@"
             INSERT INTO PhaseTemplate (PhaseTitle, Objective)
             OUTPUT INSERTED.PhaseTemplateID
-            VALUES (@Title, @Objective)";
+            VALUES (@Title, @Objective)");
 
-                SqlCommand cmd = new SqlCommand(query, con);
-                cmd.Parameters.AddWithValue("@Title", title);
-                cmd.Parameters.AddWithValue("@Objective", objective);
+            cmd.Parameters.AddWithValue("@Title", title);
+            cmd.Parameters.AddWithValue("@Objective", objective);
 
-                return (int)cmd.ExecuteScalar();
-            }
+            return (int)ExecuteScalar(cmd);
         }
-
-        public void AddPhaseToSimulation(int simulationID, int phaseTemplateID)
-        {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
-
-                // Get next order automatically
-                string orderQuery = @"
-            SELECT ISNULL(MAX(DisplayOrder),0) + 1
-            FROM SimulationPhase
-            WHERE SimulationID = @SimID";
-
-                SqlCommand orderCmd = new SqlCommand(orderQuery, con);
-                orderCmd.Parameters.AddWithValue("@SimID", simulationID);
-
-                int nextOrder = (int)orderCmd.ExecuteScalar();
-
-                string insertQuery = @"
-            INSERT INTO SimulationPhase
-            (SimulationID, PhaseTemplateID, DisplayOrder)
-            VALUES (@SimID, @TemplateID, @Order)";
-
-                SqlCommand cmd = new SqlCommand(insertQuery, con);
-                cmd.Parameters.AddWithValue("@SimID", simulationID);
-                cmd.Parameters.AddWithValue("@TemplateID", phaseTemplateID);
-                cmd.Parameters.AddWithValue("@Order", nextOrder);
-
-                cmd.ExecuteNonQuery();
-            }
-        }
-
+        
+        // Note: Deleting a template does NOT delete associated simulation phases, but they will show "Unknown Phase" in the UI
         public void DeletePhase(int simulationPhaseID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
+            SqlCommand cmd = new SqlCommand(@"
+        DELETE FROM SimulationPhase 
+        WHERE SimulationPhaseID = @ID");
 
-                string query = "DELETE FROM SimulationPhase WHERE SimulationPhaseID = @ID";
+            cmd.Parameters.AddWithValue("@ID", simulationPhaseID);
 
-                SqlCommand cmd = new SqlCommand(query, con);
-                cmd.Parameters.AddWithValue("@ID", simulationPhaseID);
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
 
+        // Adds a new phase to a simulation based on a template, placing it at the end of the current phases
+        public void AddPhaseToSimulation(int simulationID, int phaseTemplateID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+            INSERT INTO SimulationPhase (SimulationID, PhaseTemplateID, DisplayOrder)
+            SELECT 
+                @SimID, 
+                @TemplateID, 
+                ISNULL(MAX(DisplayOrder), 0) + 1
+            FROM SimulationPhase
+            WHERE SimulationID = @SimID");
+
+            cmd.Parameters.AddWithValue("@SimID", simulationID);
+            cmd.Parameters.AddWithValue("@TemplateID", phaseTemplateID);
+
+            ExecuteNonQuery(cmd);
+        }
+
+        // Swaps the display order of a phase with its adjacent phase (left or right) within the same simulation
         public void SwapPhaseOrder(int simulationID, int phaseInstanceID, bool moveLeft)
         {
             using (SqlConnection con = new SqlConnection(_connStr))
@@ -257,9 +220,6 @@ namespace Simulation_Based_Learning.Repositories
                 }
             }
         }
-
-
-
 
     }
 }

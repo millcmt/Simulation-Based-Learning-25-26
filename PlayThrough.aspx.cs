@@ -5,6 +5,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.EnterpriseServices;
 using System.Linq;
+using System.Security.Policy;
 using System.Web;
 using System.Web.UI;
 using System.Web.UI.WebControls;
@@ -13,56 +14,212 @@ namespace Simulation_Based_Learning
 {
     public partial class PlayThrough : System.Web.UI.Page
     {
-        private SimulationRepository repo = new SimulationRepository();
+        // Repositories
+        private SimulationRepository sRepo = new SimulationRepository();
+        private PlaythroughRepository pRepo = new PlaythroughRepository();
+
+        // On page load, determine where the user is in the flow and show appropriate panel
         protected void Page_Load(object sender, EventArgs e)
         {
-            if (!IsPostBack)
+            if (IsPostBack) return;
+
+            // Load simulations dropdown (ONLY once)
+            ddlSimulations.DataSource = sRepo.GetAllSimulations();
+            ddlSimulations.DataTextField = "Title";
+            ddlSimulations.DataValueField = "SimulationID";
+            ddlSimulations.DataBind();
+
+            // Check session for user/team/session status
+            int teamID = Convert.ToInt32(Session["TeamID"]);
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+
+            // Not logged in → redirect to login page
+            if (Session["UserID"] == null)
             {
-                var simulations = repo.GetAllSimulations();
-                ddlSimulations.DataSource = simulations;
-                ddlSimulations.DataTextField = "Title";
-                ddlSimulations.DataValueField = "SimulationID";
-                ddlSimulations.DataBind();
+                Response.Redirect("Authentication.aspx");
+                return;
+            }
+            // No team → Join screen
+            if (Session["TeamID"] == null)
+            {
+                ShowPanel("Join");
+                return;
+            }
+            //3. Has team but no session → Lobby
+            if (Session["SessionID"] == null)
+            {
+                ShowPanel("Lobby");
+                LoadPlayers();
+                return;
             }
 
-                if (Session["SessionID"] != null)
-            {
-                int sessionID = Convert.ToInt32(Session["SessionID"]);
+            //load scene directly
+            LoadScene(sessionID);
+        }
 
-                PlaythroughRepository repo = new PlaythroughRepository();
-                DecisionRepository dRepo = new DecisionRepository();
+        // load players in lobby and display join code
+        private void LoadPlayers()
+        {
+            int teamID = Convert.ToInt32(Session["TeamID"]);
+            var data = pRepo.GetTeamLobbyData(teamID);
+            rptPlayers.DataSource = data.players;
+            rptPlayers.DataBind();
+            lblTeamCode.Text = data.joinCode;
+        }
 
-                // 🔥 Only auto-load scene on FIRST load
-                if (!IsPostBack)
+        // load scene data and dialogue
+        private void LoadScene(int sessionID)
+        {
+            // 🔥 LOAD SCENE
+            DataTable dt = pRepo.GetSceneBundle(sessionID);
+
+            // If no scene data, something went wrong - stay on lobby
+            if (dt.Rows.Count == 0) return;
+            // Load first row for scene-level data (title, video, image)
+            var first = dt.Rows[0];
+            // Save current scene ID in session for sync checks
+            Session["CurrentSceneID"] = first["SceneID"];
+            
+            lblSceneTitle.Text = first["SceneTitle"].ToString();
+            sceneSource.Src = first["VideoPath"].ToString();
+            sceneImagePath.Src = first["ImagePath"].ToString();
+            
+            // 🔥 LOAD DIALOGUE
+            var dialogue = dt.AsEnumerable()
+                .Where(r => r["Dialogue"] != DBNull.Value)
+                .Select(r => new
                 {
-                    string status = repo.GetSessionStatus(sessionID);
+                    Speaker = r["Speaker"].ToString(),
+                    Dialogue = r["Dialogue"].ToString()
+                }).Distinct().ToList();
 
-                    
-                    if (status == "InProgress")
+            rptDialogue.DataSource = dialogue;
+            rptDialogue.DataBind();
+
+            //ShowPanel
+            ShowPanel("Scene");
+        }
+
+        // load decision data from current scene 
+        private void LoadDecision(int sessionID)
+        {
+            var dt = pRepo.GetSceneBundle(sessionID);
+
+            // If no scene data, something went wrong - stay on lobby 
+            if (dt.Rows.Count == 0) return;
+            var first = dt.Rows[0];
+            int sceneID = (int)first["SceneID"];
+
+            // 🔥 CHECK if decision exists (NO extra DB call)
+            if (first["DecisionPointID"] != DBNull.Value)
+            {
+                int decisionID = (int)first["DecisionPointID"];
+
+                // Save for submit later
+                ViewState["DecisionID"] = decisionID;
+
+                // Load decision prompt
+                lblDecisionQuestion.Text = first["DecisionPrompt"].ToString();
+
+                // 🔥 Extract options from SAME dataset
+                var options = dt.AsEnumerable()
+                    .Where(r => r["OptionID"] != DBNull.Value)
+                    .Select(r => new
                     {
-                        
-                        LoadScene(sessionID);
-                        return;
-                        
-                    }                                      
-                }                
-            }
+                        OptionID = r["OptionID"],
+                        OptionText = r["OptionText"]
+                    })
+                    .Distinct()
+                    .ToList();
 
-            if (!IsPostBack)
+                rblOptions.DataSource = options;
+                rblOptions.DataTextField = "OptionText";
+                rblOptions.DataValueField = "OptionID";
+                rblOptions.DataBind();
+
+                ShowPanel("Decision");
+            }
+            else
             {
-                if (Session["TeamID"] == null)
-                {
-                    ShowPanel("Join");
-                }
-                else
-                {
-                    ShowPanel("Lobby");
-                    LoadPlayers();
-                }
+                lblDecisionStatus.Text = "Waiting for next scene...";
+                // End simulation if no next scene
+                //pRepo.UpdateSessionStatus(sessionID, "Completed");
+                //ShowPanel("Lobby"); // or a "Simulation Complete" panel
+
             }
         }
 
+        
 
+
+
+
+
+
+
+
+
+
+        //  move from video to decision panel
+        protected void btnContinue_Click(object sender, EventArgs e)
+        {
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+            LoadDecision(sessionID);
+        }
+
+        // submit decision and check if all players have decided
+        protected void btnSubmitDecision_Click(object sender, EventArgs e)
+        {
+            if (rblOptions.SelectedItem == null) { lblDecisionStatus.Text = "Please select an option before continuing."; return; }
+             
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+            int userID = Convert.ToInt32(Session["UserID"]);
+            int decisionID = Convert.ToInt32(ViewState["DecisionID"]);
+            int optionID = int.Parse(rblOptions.SelectedValue);
+
+            // This method both saves the decision and checks if all players have decided, returning the appropriate status
+            string status = pRepo.SubmitDecisionAndAdvance(sessionID, userID, decisionID, optionID);
+
+            if (status == "WAITING")
+            {
+                lblDecisionStatus.Text = "Decision submitted. Waiting for others...";
+                btnSubmitDecision.Enabled = false;
+            }
+            else if (status == "ADVANCED")
+            {
+                lblDecisionStatus.Text = "Advancing...";
+                Response.Redirect(Request.RawUrl);
+            }
+        }
+
+        // In case a player tries to proceed without waiting for others, we check again if all players have decided before allowing them to continue
+        protected void btnProceed_Click(object sender, EventArgs e)
+        {
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+            int decisionID = Convert.ToInt32(ViewState["DecisionID"]);
+            
+            int remaining = pRepo.HaveAllPlayersDecided(sessionID, decisionID);
+            if (remaining == 0)
+            {
+                Response.Redirect(Request.RawUrl);
+            }
+            else
+            {
+                lblDecisionStatus.Text = $"Waiting for {remaining} player(s)...";
+            }
+        }
+
+        // Host creates simulation, which creates session and moves them to character selection
+        protected void btnStartSimulation_Click(object sender, EventArgs e)
+        {
+            int simulationID = int.Parse(ddlSimulations.SelectedValue);
+            int teamID = Convert.ToInt32(Session["TeamID"]);
+            int sessionID = pRepo.CreateSession(teamID, simulationID);
+            pRepo.UpdateSessionStatus(sessionID, "Waiting"); // status before character selection
+            Session["SessionID"] = sessionID;
+            ShowPanel("Character"); // Move players to character selection
+        }
+        // create team logic - validate name, create team, add host as member, then show lobby
         protected void btnCreateTeam_Click(object sender, EventArgs e)
         {
             string teamName = txtTeamName.Text.Trim();
@@ -73,169 +230,46 @@ namespace Simulation_Based_Learning
                 return;
             }
 
-            PlaythroughRepository playRepo = new PlaythroughRepository();
-
-            int teamID = playRepo.CreateTeam(teamName);
-
-            // host joins their own team
-            playRepo.AddMember(teamID, Convert.ToInt32(Session["UserID"]));
+            //Create team and add host as member
+            int teamID = pRepo.CreateTeam(teamName);
+            pRepo.AddMember(teamID, Convert.ToInt32(Session["UserID"]));
 
             Session["TeamID"] = teamID;
 
             ShowPanel("Lobby");
             LoadPlayers();
         }
+        // join team logic - validate code, add player to team, then show lobby
         protected void btnJoinTeam_Click(object sender, EventArgs e)
         {
+            // trim code ro get team the getting team by code and team ID then add member to team and show lobby
             string code = txtJoinCode.Text.Trim();
+            DataRow team = pRepo.GetTeamByJoinCode(code);
+            int teamID = Convert.ToInt32(team["TeamID"]);
 
-            PlaythroughRepository playRepo = new PlaythroughRepository();
-
-            DataRow team = playRepo.GetTeamByJoinCode(code);
-
+            // Validate code
             if (team == null)
             {
                 lblJoinError.Text = "Invalid team code.";
                 return;
             }
-
-            int teamID = Convert.ToInt32(team["TeamID"]);
-
-           
-
-            if (playRepo.IsSessionActive(teamID))
+            // Prevent joining if session already started
+            int sessionID = pRepo.GetActiveSessionID(teamID);
+            if (sessionID == 0)
             {
-                lblJoinError.Text = "Simulation already started.";
+                lblCharacterStatus.Text = "Session not ready yet.";
                 return;
             }
-
+            // Save session for later use
+            Session["SessionID"] = sessionID;
             Session["TeamID"] = teamID;
 
-            playRepo.AddMember(teamID, Convert.ToInt32(Session["UserID"]));
-            
+            // Add player to team then show lobby and load players
+            pRepo.AddMember(teamID, Convert.ToInt32(Session["UserID"]));
             ShowPanel("Lobby");
             LoadPlayers();
         }
-
-
-        private void LoadPlayers()
-        {
-            int teamID = Convert.ToInt32(Session["TeamID"]);
-
-            PlaythroughRepository repo = new PlaythroughRepository();
-
-            rptPlayers.DataSource = repo.GetPlayersByTeam(teamID);
-            rptPlayers.DataBind();
-            lblTeamCode.Text = new PlaythroughRepository().GetJoinCode(teamID);
-
-
-        }
-        private void LoadScene(int sessionID)
-        {
-            PlaythroughRepository repo = new PlaythroughRepository();
-
-            DataRow scene = repo.GetCurrentScene(sessionID);
-
-            if (scene == null) return;
-
-            lblSceneTitle.Text = scene["SceneTitle"].ToString();
-            sceneSource.Src = scene["VideoPath"].ToString();
-            sceneImagePath.Src = scene["ImagePath"].ToString();
-            sceneVideo.Attributes["load"] = "true";
-            sceneVideo.Attributes["key"] = Guid.NewGuid().ToString();
-
-            // 🔥 LOAD DIALOGUE
-            int sceneID = (int)scene["SceneID"];
-            DataTable dialogue = repo.GetDialogueByScene(sceneID);
-            rptDialogue.DataSource = dialogue;
-            rptDialogue.DataBind();
-
-            ShowPanel("Scene");
-        }
-        protected string GetBubbleClass(string speaker)
-        {
-            // current player's character
-            string myCharacter = GetMyCharacter();
-
-            if (speaker == myCharacter)
-                return "chat-right"; // 🔥 YOU
-            else
-                return "chat-left"; // others
-        }
-        private string GetMyCharacter()
-        {
-            if (Session["SessionID"] == null || Session["UserID"] == null)
-                return "";
-
-            int sessionID = Convert.ToInt32(Session["SessionID"]);
-            int userID = Convert.ToInt32(Session["UserID"]);
-
-            PlaythroughRepository repo = new PlaythroughRepository();
-
-            return repo.GetPlayerCharacter(sessionID, userID);
-        }
-        protected void btnStartSimulation_Click(object sender, EventArgs e)
-        {
-            int simulationID = int.Parse(ddlSimulations.SelectedValue);
-            int teamID = Convert.ToInt32(Session["TeamID"]);
-
-            PlaythroughRepository repo = new PlaythroughRepository();
-
-            int sessionID = repo.CreateSession(teamID, simulationID);
-            repo.UpdateSessionStatus(sessionID, "Waiting"); // status before character selection
-            Session["SessionID"] = sessionID;
-
-            ShowPanel("Character"); // Move players to character selection
-        }
-
-
-        private void ShowPanel(string panel)
-        {
-            PanelJoinTeam.Visible = false;
-            PanelLobby.Visible = false;
-            PanelCharacterSelect.Visible = false;
-            PanelScene.Visible = false;
-            PanelDecision.Visible = false;
-
-
-            switch (panel)
-            {
-                case "Join":
-                    PanelJoinTeam.Visible = true;
-                    break;
-
-                case "Lobby":
-                    PanelLobby.Visible = true;
-                    break;
-
-                case "Character":
-                    PanelCharacterSelect.Visible = true;
-                    break;
-
-                case "Scene":
-                    PanelScene.Visible = true;
-                    break;
-
-                case "Decision":
-                    PanelDecision.Visible = true;
-                    break;
-            }
-            ViewState["CurrentPanel"] = panel;
-        }
-        protected void btnLogout_Click(object sender, EventArgs e)
-        {
-            // 🔥 Clear ALL session data
-            Session.Clear();
-            Session.Abandon();
-
-            // 🔥 Force full reload
-            Response.Redirect("Authentication.aspx");
-        }
-        protected void btnBack_Click(object sender, EventArgs e)
-        {
-            string panel = ViewState["CurrentPanel"]?.ToString();
-            ShowPanel("Join");
-        }
+        // Character selection logic - save character choice, check if all players have selected, then move to scene
         protected void SelectCharacter(object sender, EventArgs e)
         {
             int teamID = Convert.ToInt32(Session["TeamID"]);
@@ -244,21 +278,17 @@ namespace Simulation_Based_Learning
             Button btn = (Button)sender;
             string character = btn.Text;
 
-            PlaythroughRepository repo = new PlaythroughRepository();
-
             // Ensure session exists
             int sessionID;
             if (Session["SessionID"] == null)
             {
                 // Try to get existing session instead of creating
-                sessionID = repo.GetActiveSessionID(teamID);
-
+                sessionID = pRepo.GetActiveSessionID(teamID);
                 if (sessionID == 0)
                 {
                     lblCharacterStatus.Text = "Session not ready yet.";
                     return;
                 }
-
                 Session["SessionID"] = sessionID;
             }
             else
@@ -267,8 +297,7 @@ namespace Simulation_Based_Learning
             }
 
             // Attempt to select the character
-            bool success = repo.SelectCharacter(sessionID, userID, character);
-
+            bool success = pRepo.SelectCharacter(sessionID, userID, character);
             if (!success)
             {
                 lblCharacterStatus.Text = $"Sorry, {character} is already taken.";
@@ -279,199 +308,32 @@ namespace Simulation_Based_Learning
             lblCharacterStatus.Text = $"You have selected: {character}";
 
             // Disable already taken characters
-            DisableTakenCharacters(sessionID);
+            if (!IsPostBack)
+            {
+                DisableTakenCharacters(sessionID);
+            }
 
             // Show the Character panel (post-selection)
             ShowPanel("Character");
 
             // Check if all players selected → auto move to Scene panel
-            int totalPlayers = repo.GetPlayerCount(teamID);
-            int selectedCount = repo.GetSelectedCharacterCount(sessionID);
-            if (selectedCount >= totalPlayers && totalPlayers > 0)
+            var status = pRepo.GetPlayerStatus(teamID, sessionID);
+
+            int totalPlayers = status.totalPlayers;
+            int selectedCount = status.selectedPlayers;
+            
+            if (totalPlayers > 0 && selectedCount >= totalPlayers)
             {
                 // 🔥 Start simulation properly
-                repo.UpdateSessionStatus(sessionID, "InProgress");
-
+                pRepo.UpdateSessionStatus(sessionID, "InProgress");
                 // 🔥 Initialize FIRST scene
-                repo.InitializeSessionProgress(sessionID);
-
+                pRepo.InitializeSessionProgress(sessionID);
                 // 🔥 Reload page so everyone syncs
                 Response.Redirect(Request.RawUrl);
             }
-
-
-        }
-        protected void btnRefresh_Click(object sender, EventArgs e)
-        {
-            Response.Redirect(Request.RawUrl);
         }
 
-        protected void btnContinue_Click(object sender, EventArgs e)
-        {
-            int sessionID = Convert.ToInt32(Session["SessionID"]);
-            PlaythroughRepository pRepo = new PlaythroughRepository();
-            DecisionRepository dRepo = new DecisionRepository();
-
-            // Get the current scene
-            DataRow currentScene = pRepo.GetCurrentScene(sessionID);
-            if (currentScene == null) return;
-
-            int sceneID = (int)currentScene["SceneID"];
-
-            // Get all decision points for the current scene
-            DataTable decisions = dRepo.GetDecisionPoints(sceneID);
-
-            if (decisions.Rows.Count > 0)
-            {
-                // Load the first decision point
-                int decisionID = (int)decisions.Rows[0]["DecisionPointID"];
-                lblDecisionQuestion.Text = decisions.Rows[0]["DecisionPrompt"].ToString();
-
-                DataTable options = dRepo.GetOptions(decisionID);
-                rblOptions.DataSource = options;
-                rblOptions.DataTextField = "OptionText";
-                rblOptions.DataValueField = "OptionID";
-                rblOptions.DataBind();
-
-                ShowPanel("Decision");
-            }
-            else
-            {
-                // No decision points → move to next scene
-                int nextSceneID = pRepo.GetNextSceneID(sessionID, sceneID); // You need to implement this
-                if (nextSceneID > 0)
-                {
-                    pRepo.SetCurrentScene(sessionID, nextSceneID);
-                    LoadScene(sessionID);
-                }
-                else
-                {
-                    // End simulation if no next scene
-                    pRepo.UpdateSessionStatus(sessionID, "Completed");
-                    ShowPanel("Lobby"); // or a "Simulation Complete" panel
-                }
-            }
-        }
-
-        protected void btnSubmitDecision_Click(object sender, EventArgs e)
-        {
-            if (rblOptions.SelectedItem == null)
-            {
-                lblDecisionStatus.Text = "Please select an option before continuing.";
-                return;
-            }
-
-            int sessionID = Convert.ToInt32(Session["SessionID"]);
-            int userID = Convert.ToInt32(Session["UserID"]);
-            int optionID = int.Parse(rblOptions.SelectedValue);
-
-            PlaythroughRepository pRepo = new PlaythroughRepository();
-            DecisionRepository dRepo = new DecisionRepository();
-
-            DataRow currentScene = pRepo.GetCurrentScene(sessionID);
-            if (currentScene == null) return;
-
-            int sceneID = (int)currentScene["SceneID"];
-
-            //DataTable decisions = dRepo.GetDecisionPoints(sceneID);
-            //if (decisions.Rows.Count == 0) return;
-
-            //int decisionID = (int)decisions.Rows[0]["DecisionPointID"];
-            int decisionID = (int)dRepo.GetDecisionPoints(sceneID).Rows[0]["DecisionPointID"];
-
-            // ✅ ONLY SAVE
-            pRepo.SubmitPlayerDecision(sessionID, userID, decisionID, optionID);
-
-            lblDecisionStatus.Text = "Decision submitted. Waiting for others...";
-
-        }
-        protected void btnProceed_Click(object sender, EventArgs e)
-        {
-            int sessionID = Convert.ToInt32(Session["SessionID"]);
-
-            PlaythroughRepository pRepo = new PlaythroughRepository();
-            DecisionRepository dRepo = new DecisionRepository();
-
-            DataRow currentScene = pRepo.GetCurrentScene(sessionID);
-            int sceneID = (int)currentScene["SceneID"];
-
-
-            if (currentScene == null) return;
-
-            DataTable decisions = dRepo.GetDecisionPoints(sceneID);
-
-            if (decisions.Rows.Count > 0)
-            {
-                int decisionID = (int)decisions.Rows[0]["DecisionPointID"];
-
-                bool allDone = pRepo.HaveAllPlayersDecided(sessionID, decisionID);
-
-                if (!allDone)
-                {
-                    lblDecisionStatus.Text = "Waiting for all players to submit decisions...syncing...";
-                    btnRefresh_Click(sender, e);
-                    return;
-                }
-            }
-
-            // Move forward
-            int nextSceneID = pRepo.GetNextSceneID(sessionID, sceneID);
-
-            if (nextSceneID > 0)
-            {
-                pRepo.SetCurrentScene(sessionID, nextSceneID);
-                btnRefresh_Click(sender, e); // refresh for all users
-            }
-            else
-            {
-                pRepo.UpdateSessionStatus(sessionID, "Completed");
-                ShowPanel("Join");
-                btnRefresh_Click(sender, e); // also refresh here
-            }
-            
-        }
-
-        protected override void RaisePostBackEvent(IPostBackEventHandler sourceControl, string eventArgument)
-        {
-            base.RaisePostBackEvent(sourceControl, eventArgument);
-
-            string target = Request["__EVENTTARGET"];
-
-            if (target == "VideoEnded")
-            {
-                ShowPanel("Decision");
-                LoadDecisionFromCurrentScene();
-            }
-        }
-        private void LoadDecisionFromCurrentScene()
-        {
-            int sessionID = Convert.ToInt32(Session["SessionID"]);
-
-            PlaythroughRepository pRepo = new PlaythroughRepository();
-            DecisionRepository dRepo = new DecisionRepository();
-
-            DataRow scene = pRepo.GetCurrentScene(sessionID);
-
-            if (scene == null) return;
-
-            int sceneID = (int)scene["SceneID"];
-
-            DataTable decisions = dRepo.GetDecisionPoints(sceneID);
-
-            if (decisions.Rows.Count == 0) return;
-
-            int decisionID = (int)decisions.Rows[0]["DecisionPointID"];
-
-            lblDecisionQuestion.Text = decisions.Rows[0]["DecisionPrompt"].ToString();
-
-            DataTable options = dRepo.GetOptions(decisionID);
-
-            rblOptions.DataSource = options;
-            rblOptions.DataTextField = "OptionText";
-            rblOptions.DataValueField = "OptionID";
-            rblOptions.DataBind();
-        }
-
+        // Disable character buttons that have already been taken by other players
         private void DisableTakenCharacters(int sessionID)
         {
             PlaythroughRepository repo = new PlaythroughRepository();
@@ -497,6 +359,106 @@ namespace Simulation_Based_Learning
         
 
 
+
+
+
+
+
+
+
+        // Utility to show/hide panels
+        private void ShowPanel(string panel)
+        {
+            PanelJoinTeam.Visible = false;
+            PanelLobby.Visible = false;
+            PanelCharacterSelect.Visible = false;
+            PanelScene.Visible = false;
+            PanelDecision.Visible = false;
+
+            switch (panel)
+            {
+                case "Join":
+                    PanelJoinTeam.Visible = true;
+                    break;
+
+                case "Lobby":
+                    PanelLobby.Visible = true;
+                    break;
+
+                case "Character":
+                    PanelCharacterSelect.Visible = true;
+                    break;
+
+                case "Scene":
+                    PanelScene.Visible = true;
+                    break;
+
+                case "Decision":
+                    PanelDecision.Visible = true;
+                    break;
+            }
+            ViewState["CurrentPanel"] = panel;
+        }
+
+        // Utility buttons - Refresh to resync, Logout to clear session and go to login, Back to go back to lobby (if not host)
+        protected void btnRefresh_Click(object sender, EventArgs e)
+        {
+            Response.Redirect(Request.RawUrl);
+        }
+        protected void btnLogout_Click(object sender, EventArgs e)
+        {
+            // 🔥 Clear ALL session data
+            Session.Clear();
+            Session.Abandon();
+
+            // 🔥 Force full reload
+            Response.Redirect("Authentication.aspx");
+        }
+        protected void btnBack_Click(object sender, EventArgs e)
+        {
+            string panel = ViewState["CurrentPanel"]?.ToString();
+            ShowPanel("Join");
+        }
+
+
+        // Utility to get current player's character for styling dialogue bubbles
+        private string GetMyCharacter()
+        {
+            if (Session["SessionID"] == null || Session["UserID"] == null)
+                return "";
+
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+            int userID = Convert.ToInt32(Session["UserID"]);
+
+            return pRepo.GetPlayerCharacter(sessionID, userID);
+        }
+        // Utility to determine CSS class for dialogue bubble based on speaker (current player vs others)
+        protected string GetBubbleClass(string speaker)
+        {
+            // current player's character
+            string myCharacter = GetMyCharacter();
+
+            if (speaker == myCharacter)
+                return "chat-right"; // 🔥 YOU
+            else
+                return "chat-left"; // others
+        }
+
+        // This method listens for postback events triggered by JavaScript (like video end) and acts accordingly
+        protected override void RaisePostBackEvent(IPostBackEventHandler sourceControl, string eventArgument)
+        {
+            base.RaisePostBackEvent(sourceControl, eventArgument);
+
+            string target = Request["__EVENTTARGET"];
+
+            if (target == "VideoEnded")
+            {
+                ShowPanel("Decision");
+                // get session ID from session
+                int sessionID = Convert.ToInt32(Session["SessionID"]);
+                LoadDecision(sessionID);
+            }
+        }
 
     }
 }

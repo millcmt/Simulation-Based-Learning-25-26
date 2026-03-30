@@ -11,78 +11,83 @@ namespace Simulation_Based_Learning
 {
     public partial class Authentication : System.Web.UI.Page
     {
-        protected void Page_Load(object sender, EventArgs e)
-        {
+        // Create an instance of UserRepository to interact with the database for user-related operations
+        UserRepository repo = new UserRepository();
 
-        }
+        // Page load event - can be used for any initialization if needed
+        protected void Page_Load(object sender, EventArgs e){   }
 
+        
 
-        protected void lnkShowRegister_Click(object sender, EventArgs e)
-        {
-            pnlLogin.Visible = false;
-            pnlRegister.Visible = true;
-        }
-
-        protected void lnkBackToLogin_Click(object sender, EventArgs e)
-        {
-            pnlLogin.Visible = true;
-            pnlRegister.Visible = false;
-        }
-
+        
+        // Handle login button click event - validate user credentials and set session variables
         protected void btnLogin_Click(object sender, EventArgs e)
         {
+            // Get email and password from input fields
             string email = txtLoginEmail.Text.Trim();
             string password = txtLoginPassword.Text.Trim();
-
-            UserRepository repo = new UserRepository();
-
+            // Clear any existing session data to ensure a fresh login
+            Session.Clear();
+            // Retrieve user from the database based on the provided email
             DataRow user = repo.GetUserByEmail(email);
 
+            // Validate that the user exists and the password matches
             if (user == null)
             {
                 lblError.Text = "Invalid login.";
                 return;
             }
-
+            // For simplicity, we are comparing plain text passwords here. In a real application, you should hash the password and compare with the stored hash.
             if (user["PasswordHash"].ToString() != password) // later we hash
             {
                 lblError.Text = "Incorrect password.";
                 return;
             }
+            // Validate that email and password are not empty
+            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+            {
+                lblError.Text = "Please enter both email and password.";
+                return;
+            }
 
+            // Set session variables for the logged-in user and redirect based on their role
             Session["UserID"] = user["UserID"];
             Session["Role"] = user["Role"];
-
             RedirectUser();
         }
+
+        // Handle registration button click event - create a new user and switch to login panel
         protected void btnRegister_Click(object sender, EventArgs e)
         {
-            UserRepository repo = new UserRepository();
+            // Create a new user in the database with the provided registration details
+            repo.CreateUser(txtUsername.Text,txtEmail.Text,txtPassword.Text,"Player");
 
-            repo.CreateUser(
-                txtUsername.Text,
-                txtEmail.Text,
-                txtPassword.Text,
-                "Player"
-            );
+            // Validate that all registration fields are filled out
+            if (string.IsNullOrEmpty(txtUsername.Text) || string.IsNullOrEmpty(txtEmail.Text) || string.IsNullOrEmpty(txtPassword.Text))
+            {
+                lblError.Text = "Please fill out all registration fields.";
+                return;
+            }
 
+            // After successful registration, switch back to the login panel for the user to log in
             pnlRegister.Visible = false;
             pnlLogin.Visible = true;
         }
+
+        // Handle guest access button click event - create a guest user and redirect to gameplay
         protected void btnGuest_Click(object sender, EventArgs e)
         {
-            UserRepository repo = new UserRepository();
-
             int userID = repo.CreateGuestUser();
-
-            repo.UpdateGuestUsername(userID);
-
             Session["UserID"] = userID;
             Session["Role"] = "Guest";
-
             Response.Redirect("PlayThrough.aspx");
         }
 
+
+
+
+
+        // Redirect user based on their role - admins go to dashboard, players and guests go to gameplay
         private void RedirectUser()
         {
             string role = Session["Role"].ToString();
@@ -96,6 +101,17 @@ namespace Simulation_Based_Learning
                 Response.Redirect("PlayThrough.aspx");
             }
         }
-
+        // Toggle between login and registration panels based on user interaction
+        protected void lnkShowRegister_Click(object sender, EventArgs e)
+        {
+            pnlLogin.Visible = false;
+            pnlRegister.Visible = true;
+        }
+        // Toggle back to login panel from registration panel
+        protected void lnkBackToLogin_Click(object sender, EventArgs e)
+        {
+            pnlLogin.Visible = true;
+            pnlRegister.Visible = false;
+        }
     }
 }

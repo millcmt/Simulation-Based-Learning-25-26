@@ -8,96 +8,72 @@ using System.Web;
 
 namespace Simulation_Based_Learning.Repositories
 {
-    public class DialogueRepository
+    public class DialogueRepository : BaseRepository
     {
-        private readonly string _connStr =
-            ConfigurationManager.ConnectionStrings["SimDB"].ConnectionString;
 
+        // Get all dialogue entries for a given scene, ordered by their display order
         public DataTable GetDialogueByScene(int sceneID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"SELECT DialogueID, Speaker, Dialogue, DisplayOrder
-                             FROM Dialogue
-                             WHERE SceneID = @SceneID
-                             ORDER BY DisplayOrder";
+            SqlCommand cmd = new SqlCommand(@"
+            SELECT DialogueID, Speaker, Dialogue, DisplayOrder
+            FROM Dialogue
+            WHERE SceneID = @SceneID
+            ORDER BY DisplayOrder");
 
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
-                da.SelectCommand.Parameters.AddWithValue("@SceneID", sceneID);
+            cmd.Parameters.AddWithValue("@SceneID", sceneID);
 
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                return dt;
-            }
+            return ExecuteQuery(cmd);
         }
 
+        // Inserts a new dialogue entry for the specified scene, automatically assigning it the next display order
         public void CreateDialogue(int sceneID, string speaker, string dialogue)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
+            SqlCommand cmd = new SqlCommand(@"
+            INSERT INTO Dialogue (SceneID, Speaker, Dialogue, DisplayOrder)
+            SELECT 
+                @SceneID, 
+                @Speaker, 
+                @Dialogue, 
+                ISNULL(MAX(DisplayOrder), 0) + 1
+            FROM Dialogue
+            WHERE SceneID = @SceneID");
 
-                string orderQuery = @"
-                SELECT ISNULL(MAX(DisplayOrder),0)+1
-                FROM Dialogue
-                WHERE SceneID = @SceneID";
+            cmd.Parameters.AddWithValue("@SceneID", sceneID);
+            cmd.Parameters.AddWithValue("@Speaker", speaker);
+            cmd.Parameters.AddWithValue("@Dialogue", dialogue);
 
-                SqlCommand orderCmd = new SqlCommand(orderQuery, con);
-                orderCmd.Parameters.AddWithValue("@SceneID", sceneID);
-
-                int nextOrder = (int)orderCmd.ExecuteScalar();
-
-                string insertQuery = @"
-                INSERT INTO Dialogue (SceneID, Speaker, Dialogue, DisplayOrder)
-                VALUES (@SceneID, @Speaker, @Dialogue, @Order)";
-
-                SqlCommand cmd = new SqlCommand(insertQuery, con);
-
-                cmd.Parameters.AddWithValue("@SceneID", sceneID);
-                cmd.Parameters.AddWithValue("@Speaker", speaker);
-                cmd.Parameters.AddWithValue("@Dialogue", dialogue);
-                cmd.Parameters.AddWithValue("@Order", nextOrder);
-
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
 
+        // Deletes the specified dialogue entry and shifts up the display order of any subsequent entries in the same scene
         public void DeleteDialogue(int dialogueID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = "DELETE FROM Dialogue WHERE DialogueID = @ID";
+            SqlCommand cmd = new SqlCommand(@"
+            DELETE FROM Dialogue 
+            WHERE DialogueID = @ID");
 
-                SqlCommand cmd = new SqlCommand(query, con);
-                cmd.Parameters.AddWithValue("@ID", dialogueID);
+            cmd.Parameters.AddWithValue("@ID", dialogueID);
 
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
 
+        // Updates the speaker and dialogue text of the specified dialogue entry
         public void UpdateDialogue(int dialogueID, string speaker, string dialogue)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"
+            SqlCommand cmd = new SqlCommand(@"
         UPDATE Dialogue
         SET Speaker = @Speaker,
             Dialogue = @Dialogue
-        WHERE DialogueID = @ID";
+        WHERE DialogueID = @ID");
 
-                SqlCommand cmd = new SqlCommand(query, con);
+            cmd.Parameters.AddWithValue("@Speaker", speaker);
+            cmd.Parameters.AddWithValue("@Dialogue", dialogue);
+            cmd.Parameters.AddWithValue("@ID", dialogueID);
 
-                cmd.Parameters.AddWithValue("@Speaker", speaker);
-                cmd.Parameters.AddWithValue("@Dialogue", dialogue);
-                cmd.Parameters.AddWithValue("@ID", dialogueID);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
 
+        // swaps the display order of the specified dialogue with the one to its left or right
         public void SwapDialogueOrder(int dialogueID, bool moveLeft)
         {
             using (SqlConnection con = new SqlConnection(_connStr))
@@ -197,15 +173,6 @@ namespace Simulation_Based_Learning.Repositories
                 }
             }
         }
-
-
-
-
-
-
-
-
-
 
     }
 }

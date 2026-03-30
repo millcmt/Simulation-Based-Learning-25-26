@@ -8,302 +8,215 @@ using System.Web;
 
 namespace Simulation_Based_Learning.Repositories
 {
-    public class DecisionRepository
+    public class DecisionRepository : BaseRepository
     {
-        private readonly string _connStr;
-        public DecisionRepository()
-        {
-            _connStr = ConfigurationManager
-            .ConnectionStrings["SimDB"]
-            .ConnectionString;
-        }
-
+        //Get all decision points for a scene
         public DataTable GetDecisionPoints(int sceneID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"SELECT DecisionPointID, DecisionPrompt
-                         FROM DecisionPoint
-                         WHERE SceneID = @SceneID";
+            SqlCommand cmd = new SqlCommand(@"
+            SELECT DecisionPointID, DecisionPrompt
+            FROM DecisionPoint
+            WHERE SceneID = @SceneID");
 
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
-                da.SelectCommand.Parameters.AddWithValue("@SceneID", sceneID);
+            cmd.Parameters.AddWithValue("@SceneID", sceneID);
 
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                return dt;
-            }
+            return ExecuteQuery(cmd);
         }
 
+        //Add a new decision point to a scene, automatically assigning the next display order
         public void AddDecisionPoint(int sceneID, string prompt)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
+            SqlCommand cmd = new SqlCommand(@"
+            INSERT INTO DecisionPoint (SceneID, DecisionPrompt, DisplayOrder)
+            SELECT 
+                @SceneID, 
+                @Prompt, 
+                ISNULL(MAX(DisplayOrder),0) + 1
+            FROM DecisionPoint
+            WHERE SceneID = @SceneID");
 
-                // compute next display order for this scene
-                string orderQuery = @"
-SELECT ISNULL(MAX(DisplayOrder),0) + 1
-FROM DecisionPoint
-WHERE SceneID = @SceneID";
+            cmd.Parameters.AddWithValue("@SceneID", sceneID);
+            cmd.Parameters.AddWithValue("@Prompt", prompt);
 
-                using (var orderCmd = new SqlCommand(orderQuery, con))
-                {
-                    orderCmd.Parameters.AddWithValue("@SceneID", sceneID);
-                    int nextOrder = (int)orderCmd.ExecuteScalar();
-
-                    string insert = @"
-INSERT INTO DecisionPoint (SceneID, DecisionPrompt, DisplayOrder)
-VALUES (@SceneID, @Prompt, @Order)";
-
-                    using (var cmd = new SqlCommand(insert, con))
-                    {
-                        cmd.Parameters.AddWithValue("@SceneID", sceneID);
-                        cmd.Parameters.AddWithValue("@Prompt", prompt);
-                        cmd.Parameters.AddWithValue("@Order", nextOrder);
-
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-            }
-        }
-        public void UpdateDecisionPoint(int decisionID, string prompt)
-        {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"
-        UPDATE DecisionPoint
-        SET DecisionPrompt = @Prompt
-        WHERE DecisionPointID = @ID";
-
-                SqlCommand cmd = new SqlCommand(query, con);
-
-                cmd.Parameters.AddWithValue("@Prompt", prompt);
-                cmd.Parameters.AddWithValue("@ID", decisionID);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
-        }
-        public void DeleteDecisionPoint(int decisionID)
-        {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = "DELETE FROM DecisionPoint WHERE DecisionPointID=@ID";
-
-                SqlCommand cmd = new SqlCommand(query, con);
-                cmd.Parameters.AddWithValue("@ID", decisionID);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
 
-        public DataTable GetOptions(int decisionPointID)
-        {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"SELECT OptionID, OptionLabel, OptionText
-                         FROM [Option]
-                         WHERE DecisionPointID = @ID";
-
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
-                da.SelectCommand.Parameters.AddWithValue("@ID", decisionPointID);
-
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                return dt;
-            }
-        }
-
+        //Add a new option to a decision point, automatically assigning the next display order
         public void AddOption(int decisionPointID, string label, string text)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
+            SqlCommand cmd = new SqlCommand(@"
+            INSERT INTO [Option] (DecisionPointID, OptionLabel, OptionText, DisplayOrder)
+            SELECT 
+                @DPID, 
+                @Label, 
+                @Text, 
+                ISNULL(MAX(DisplayOrder),0) + 1
+            FROM [Option]
+            WHERE DecisionPointID = @DPID");
 
-                string orderQuery = @"
-        SELECT ISNULL(MAX(DisplayOrder),0)+1
-        FROM [Option]
-        WHERE DecisionPointID = @DPID";
+            cmd.Parameters.AddWithValue("@DPID", decisionPointID);
+            cmd.Parameters.AddWithValue("@Label", label);
+            cmd.Parameters.AddWithValue("@Text", text);
 
-                SqlCommand orderCmd = new SqlCommand(orderQuery, con);
-                orderCmd.Parameters.AddWithValue("@DPID", decisionPointID);
-
-                int nextOrder = (int)orderCmd.ExecuteScalar();
-
-                string query = @"
-        INSERT INTO [Option]
-        (DecisionPointID, OptionLabel, OptionText, DisplayOrder)
-        VALUES (@DPID, @Label, @Text, @Order)";
-
-                SqlCommand cmd = new SqlCommand(query, con);
-
-                cmd.Parameters.AddWithValue("@DPID", decisionPointID);
-                cmd.Parameters.AddWithValue("@Label", label);
-                cmd.Parameters.AddWithValue("@Text", text);
-                cmd.Parameters.AddWithValue("@Order", nextOrder);
-
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
-        public void UpdateOption(int optionID, string label, string text)
+
+        //Update the prompt text of a decision point
+        public void UpdateDecisionPoint(int decisionID, string prompt)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"
-        UPDATE [Option]
-        SET OptionLabel = @Label,
-            OptionText = @Text
-        WHERE OptionID = @ID";
+            SqlCommand cmd = new SqlCommand(@"
+            UPDATE DecisionPoint
+            SET DecisionPrompt = @Prompt
+            WHERE DecisionPointID = @ID");
 
-                SqlCommand cmd = new SqlCommand(query, con);
+            cmd.Parameters.AddWithValue("@Prompt", prompt);
+            cmd.Parameters.AddWithValue("@ID", decisionID);
 
-                cmd.Parameters.AddWithValue("@Label", label);
-                cmd.Parameters.AddWithValue("@Text", text);
-                cmd.Parameters.AddWithValue("@ID", optionID);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
+
+        //Delete an option and all associated attribute effects
         public void DeleteOption(int optionID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = "DELETE FROM [Option] WHERE OptionID=@ID";
+            SqlCommand cmd = new SqlCommand(@"
+        DELETE FROM [Option] WHERE OptionID = @ID");
 
-                SqlCommand cmd = new SqlCommand(query, con);
-                cmd.Parameters.AddWithValue("@ID", optionID);
+            cmd.Parameters.AddWithValue("@ID", optionID);
 
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
-        public void AddAttributeEffect(int optionID, int attributeID, int value)
+
+        //Get all options for a decision point
+        public DataTable GetOptions(int decisionPointID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"INSERT INTO OptionAttributeEffect
-                        (OptionID, AttributeID, EffectValue)
-                        VALUES (@OptionID, @AttrID, @Value)";
+            SqlCommand cmd = new SqlCommand(@"
+        SELECT OptionID, OptionLabel, OptionText
+        FROM [Option]
+        WHERE DecisionPointID = @ID");
 
-                SqlCommand cmd = new SqlCommand(query, con);
+            cmd.Parameters.AddWithValue("@ID", decisionPointID);
 
-                cmd.Parameters.AddWithValue("@OptionID", optionID);
-                cmd.Parameters.AddWithValue("@AttrID", attributeID);
-                cmd.Parameters.AddWithValue("@Value", value);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
-        }
-        public void DeleteEffect(int effectID)
-        {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = "DELETE FROM OptionAttributeEffect WHERE EffectID=@ID";
-
-                SqlCommand cmd = new SqlCommand(query, con);
-
-                cmd.Parameters.AddWithValue("@ID", effectID);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            return ExecuteQuery(cmd);
         }
 
+        //Get all attribute effects for an option, including the attribute name for display purposes
         public DataTable GetAttributeEffects(int optionID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"
+            SqlCommand cmd = new SqlCommand(@"
         SELECT EffectID, Attribute.AttributeName, EffectValue
         FROM OptionAttributeEffect
         JOIN Attribute
-        ON Attribute.AttributeID = OptionAttributeEffect.AttributeID
-        WHERE OptionID = @OptionID";
+            ON Attribute.AttributeID = OptionAttributeEffect.AttributeID
+        WHERE OptionID = @OptionID");
 
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
+            cmd.Parameters.AddWithValue("@OptionID", optionID);
 
-                da.SelectCommand.Parameters.AddWithValue("@OptionID", optionID);
-
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                return dt;
-            }
+            return ExecuteQuery(cmd);
         }
 
+        //Get all attributes for dropdown population when adding/editing effects
         public DataTable GetAttributes()
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"SELECT AttributeID, AttributeName
-                         FROM Attribute
-                         ORDER BY AttributeName";
+            SqlCommand cmd = new SqlCommand(@"
+        SELECT AttributeID, AttributeName
+        FROM Attribute
+        ORDER BY AttributeName");
 
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
-
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                return dt;
-            }
+            return ExecuteQuery(cmd);
         }
 
+        //Add a new attribute effect to an option
+        public void AddAttributeEffect(int optionID, int attributeID, int value)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+        INSERT INTO OptionAttributeEffect
+        (OptionID, AttributeID, EffectValue)
+        VALUES (@OptionID, @AttrID, @Value)");
+
+            cmd.Parameters.AddWithValue("@OptionID", optionID);
+            cmd.Parameters.AddWithValue("@AttrID", attributeID);
+            cmd.Parameters.AddWithValue("@Value", value);
+
+            ExecuteNonQuery(cmd);
+        }
+
+        //Delete a decision point and all associated options and effects (cascading delete)
+        public void DeleteDecisionPoint(int decisionID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+        DELETE FROM DecisionPoint 
+        WHERE DecisionPointID = @ID");
+
+            cmd.Parameters.AddWithValue("@ID", decisionID);
+
+            ExecuteNonQuery(cmd);
+        }
+
+        //Update the label and text of an option
+        public void UpdateOption(int optionID, string label, string text)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+        UPDATE [Option]
+        SET OptionLabel = @Label,
+            OptionText = @Text
+        WHERE OptionID = @ID");
+
+            cmd.Parameters.AddWithValue("@Label", label);
+            cmd.Parameters.AddWithValue("@Text", text);
+            cmd.Parameters.AddWithValue("@ID", optionID);
+
+            ExecuteNonQuery(cmd);
+        }
+
+        //Delete an attribute effect
+        public void DeleteEffect(int effectID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+        DELETE FROM OptionAttributeEffect 
+        WHERE EffectID = @ID");
+
+            cmd.Parameters.AddWithValue("@ID", effectID);
+
+            ExecuteNonQuery(cmd);
+        }
+
+        //Add a new attribute to the system
         public void AddAttribute(string name)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"INSERT INTO Attribute (AttributeName)
-                         VALUES (@Name)";
+            SqlCommand cmd = new SqlCommand(@"
+        INSERT INTO Attribute (AttributeName)
+        VALUES (@Name)");
 
-                SqlCommand cmd = new SqlCommand(query, con);
-                cmd.Parameters.AddWithValue("@Name", name);
+            cmd.Parameters.AddWithValue("@Name", name);
 
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
+
+        //Update the name of an attribute
         public void UpdateAttribute(int attributeID, string name)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"
+            SqlCommand cmd = new SqlCommand(@"
         UPDATE Attribute
         SET AttributeName = @Name
-        WHERE AttributeID = @ID";
+        WHERE AttributeID = @ID");
 
-                SqlCommand cmd = new SqlCommand(query, con);
+            cmd.Parameters.AddWithValue("@Name", name);
+            cmd.Parameters.AddWithValue("@ID", attributeID);
 
-                cmd.Parameters.AddWithValue("@Name", name);
-                cmd.Parameters.AddWithValue("@ID", attributeID);
-
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
+
+        //Delete an attribute and all associated effects (cascading delete)
         public void DeleteAttribute(int id)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = "DELETE FROM Attribute WHERE AttributeID=@ID";
+            SqlCommand cmd = new SqlCommand(@"
+        DELETE FROM Attribute 
+        WHERE AttributeID = @ID");
 
-                SqlCommand cmd = new SqlCommand(query, con);
-                cmd.Parameters.AddWithValue("@ID", id);
+            cmd.Parameters.AddWithValue("@ID", id);
 
-                con.Open();
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
-
-
-
-
-
 
     }
 }

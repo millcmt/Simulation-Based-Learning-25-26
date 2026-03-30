@@ -15,6 +15,10 @@
 
 <div class="simulation-container">
     <asp:Button ID="btnLogout" runat="server" Text="Reset / Logout" OnClick="btnLogout_Click" CssClass="btn btn-danger" />
+
+    <asp:HiddenField ID="HiddenField1" runat="server" />
+
+
     <!-- JOIN TEAM PANEL -->
    <asp:Panel ID="PanelJoinTeam" runat="server" CssClass="panel-card join-panel">
 
@@ -144,7 +148,7 @@
 
     <!-- SCENE PANEL -->
     <asp:Panel ID="PanelScene" runat="server" Visible="false">
-
+       
         <h2>
             <asp:Label ID="lblSceneTitle" runat="server"/>
         </h2>
@@ -154,7 +158,7 @@
         </video>--%>
 
        
-        <audio id="sceneVideo" runat="server" controls="controls" autoplay="autoplay" onended="onVideoEnd()">
+        <audio id="sceneAudio" runat="server" controls="controls" autoplay="autoplay" onended="onVideoEnd()">
             <source id="sceneSource" runat="server" type="audio/mpeg" />
         </audio>
 
@@ -191,10 +195,11 @@
   
     <asp:Panel ID="PanelDecision" runat="server" Visible="false">
           <asp:Button ID="Button2" runat="server" Text="Refresh" OnClick="btnRefresh_Click" />
+         
     <h2>
         <asp:Label ID="lblDecisionQuestion" runat="server" />
     </h2>
-            <asp:HiddenField ID="hfWaiting" runat="server" Value="false" />
+           
 
     <asp:RadioButtonList 
         ID="rblOptions" 
@@ -230,4 +235,6 @@
 
 </body>
 </html>
+
+
 

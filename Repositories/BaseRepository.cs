@@ -10,8 +10,10 @@ namespace Simulation_Based_Learning.Repositories
 {
     public class BaseRepository
     {
+        // Connection string for the database, initialized from the configuration file.
         protected readonly string _connStr;
 
+        // Constructor that initializes the connection string from the configuration file.
         public BaseRepository()
         {
             _connStr = ConfigurationManager
@@ -19,6 +21,7 @@ namespace Simulation_Based_Learning.Repositories
                         .ConnectionString;
         }
 
+        // Executes a query and returns the results as a DataTable. Retries up to 3 times on failure.
         protected DataTable ExecuteQuery(SqlCommand cmd)
         {
             int retries = 3;
@@ -42,11 +45,12 @@ namespace Simulation_Based_Learning.Repositories
                 catch (SqlException)
                 {
                     if (--retries == 0) throw;
-                    System.Threading.Thread.Sleep(500);
+                    System.Threading.Thread.Sleep(200);
                 }
             }
         }
 
+        // Executes a non-query command (like INSERT, UPDATE, DELETE). Retries up to 3 times on failure.
         protected void ExecuteNonQuery(SqlCommand cmd)
         {
             int retries = 3;
@@ -71,6 +75,7 @@ namespace Simulation_Based_Learning.Repositories
             }
         }
 
+        // Executes a scalar command (like COUNT, SUM) and returns the result. Retries up to 3 times on failure.
         protected object ExecuteScalar(SqlCommand cmd)
         {
             int retries = 3;
@@ -89,62 +94,38 @@ namespace Simulation_Based_Learning.Repositories
                 catch (SqlException)
                 {
                     if (--retries == 0) throw;
-                    System.Threading.Thread.Sleep(500);
+                    System.Threading.Thread.Sleep(200);
                 }
             }
         }
-        public void AddMember(int teamID, int userID)
+
+        // Executes a query and returns the results as a DataSet. Retries up to 3 times on failure.
+        protected DataSet ExecuteDataSet(SqlCommand cmd)
         {
-            SqlCommand cmd = new SqlCommand(@"
-        IF NOT EXISTS (
-            SELECT 1 FROM TeamMember 
-            WHERE TeamID = @team AND UserID = @user
-        )
-        INSERT INTO TeamMember (TeamID, UserID)
-        VALUES (@team, @user)");
+            int retries = 3;
 
-            cmd.Parameters.AddWithValue("@team", teamID);
-            cmd.Parameters.AddWithValue("@user", userID);
+            while (true)
+            {
+                try
+                {
+                    using (SqlConnection con = new SqlConnection(_connStr))
+                    {
+                        cmd.Connection = con;
 
-            ExecuteNonQuery(cmd);
+                        using (SqlDataAdapter da = new SqlDataAdapter(cmd))
+                        {
+                            DataSet ds = new DataSet();
+                            da.Fill(ds);
+                            return ds;
+                        }
+                    }
+                }
+                catch (SqlException)
+                {
+                    if (--retries == 0) throw;
+                    System.Threading.Thread.Sleep(200);
+                }
+            }
         }
-
-        public string GetJoinCode(int teamID)
-        {
-            SqlCommand cmd = new SqlCommand(
-                "SELECT JoinCode FROM Team WHERE TeamID = @team");
-
-            cmd.Parameters.AddWithValue("@team", teamID);
-
-            object result = ExecuteScalar(cmd);
-
-            return result?.ToString();
-        }
-
-        public DataTable GetPlayersByTeam(int teamID)
-        {
-            SqlCommand cmd = new SqlCommand(@"
-        SELECT U.UserID, U.Username
-        FROM TeamMember TM
-        INNER JOIN [User] U ON TM.UserID = U.UserID
-        WHERE TM.TeamID = @team");
-
-            cmd.Parameters.AddWithValue("@team", teamID);
-
-            return ExecuteQuery(cmd);
-        }
-
-        public DataRow GetTeamByJoinCode(string code)
-        {
-            SqlCommand cmd = new SqlCommand(
-                "SELECT * FROM Team WHERE JoinCode = @code");
-
-            cmd.Parameters.AddWithValue("@code", code);
-
-            DataTable dt = ExecuteQuery(cmd);
-
-            return dt.Rows.Count > 0 ? dt.Rows[0] : null;
-        }
-
     }
 }

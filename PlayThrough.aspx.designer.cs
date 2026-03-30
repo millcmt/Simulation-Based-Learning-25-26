@@ -33,6 +33,15 @@ namespace Simulation_Based_Learning
         protected global::System.Web.UI.WebControls.Button btnLogout;
 
         /// <summary>
+        /// HiddenField1 control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.HiddenField HiddenField1;
+
+        /// <summary>
         /// PanelJoinTeam control.
         /// </summary>
         /// <remarks>
@@ -222,13 +231,13 @@ namespace Simulation_Based_Learning
         protected global::System.Web.UI.WebControls.Label lblSceneTitle;
 
         /// <summary>
-        /// sceneVideo control.
+        /// sceneAudio control.
         /// </summary>
         /// <remarks>
         /// Auto-generated field.
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
-        protected global::System.Web.UI.HtmlControls.HtmlAudio sceneVideo;
+        protected global::System.Web.UI.HtmlControls.HtmlAudio sceneAudio;
 
         /// <summary>
         /// sceneSource control.
@@ -292,15 +301,6 @@ namespace Simulation_Based_Learning
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
         protected global::System.Web.UI.WebControls.Label lblDecisionQuestion;
-
-        /// <summary>
-        /// hfWaiting control.
-        /// </summary>
-        /// <remarks>
-        /// Auto-generated field.
-        /// To modify move field declaration from designer file to code-behind file.
-        /// </remarks>
-        protected global::System.Web.UI.WebControls.HiddenField hfWaiting;
 
         /// <summary>
         /// rblOptions control.

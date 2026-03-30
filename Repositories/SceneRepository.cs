@@ -8,23 +8,12 @@ using System.Web;
 
 namespace Simulation_Based_Learning.Repositories
 {
-    public class SceneRepository
+    public class SceneRepository : BaseRepository
     {
-        private readonly string _connStr;
-
-        public SceneRepository()
-        {
-            _connStr = ConfigurationManager
-                        .ConnectionStrings["SimDB"]
-                        .ConnectionString;
-        }
-
-
+        // Get all scenes for a given simulation, ordered by phase and then scene order
         public DataTable GetScenesBySimulation(int simulationID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"
+            SqlCommand cmd = new SqlCommand(@"
             SELECT 
                 sp.DisplayOrder AS PhaseOrder,
                 pt.PhaseTitle,
@@ -39,120 +28,135 @@ namespace Simulation_Based_Learning.Repositories
             INNER JOIN Scene s 
                 ON pt.PhaseTemplateID = s.PhaseTemplateID
             WHERE sp.SimulationID = @SimID
-            ORDER BY sp.DisplayOrder, s.DisplayOrder";
+            ORDER BY sp.DisplayOrder, s.DisplayOrder");
 
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
-                da.SelectCommand.Parameters.AddWithValue("@SimID", simulationID);
+            cmd.Parameters.AddWithValue("@SimID", simulationID);
 
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                return dt;
-            }
+            return ExecuteQuery(cmd);
         }
 
-        public void CreateScene(int phaseTemplateID, string title, string videoPath,string ImagePath, int order)
+        // Create a new scene for a given phase template
+        public void CreateScene(int phaseTemplateID, string title, string videoPath, string imagePath, int order)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
+            SqlCommand cmd = new SqlCommand(@"
+            INSERT INTO Scene
+            (PhaseTemplateID, SceneTitle, VideoPath, ImagePath, DisplayOrder)
+            VALUES (@PhaseTemplateID, @Title, @VideoPath, @ImagePath, @Order)");
 
-                string query = @"
-        INSERT INTO Scene
-        (PhaseTemplateID, SceneTitle, VideoPath,ImagePath, DisplayOrder)
-        VALUES (@PhaseTemplateID, @Title, @VideoPath,@ImagePath, @Order)";
+            cmd.Parameters.AddWithValue("@PhaseTemplateID", phaseTemplateID);
+            cmd.Parameters.AddWithValue("@Title", title);
+            cmd.Parameters.AddWithValue("@VideoPath", videoPath);
+            cmd.Parameters.AddWithValue("@ImagePath", imagePath);
+            cmd.Parameters.AddWithValue("@Order", order);
 
-                SqlCommand cmd = new SqlCommand(query, con);
-
-                cmd.Parameters.AddWithValue("@PhaseTemplateID", phaseTemplateID);
-                cmd.Parameters.AddWithValue("@Title", title);
-                cmd.Parameters.AddWithValue("@VideoPath", videoPath);
-                cmd.Parameters.AddWithValue("@ImagePath", ImagePath);
-                cmd.Parameters.AddWithValue("@Order", order);
-
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
-        public void UpdateScene(int sceneID, string title, string videoPath, string ImagePath)
+
+        // Update an existing scene's details
+        public void UpdateScene(int sceneID, string title, string videoPath, string imagePath)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
+            SqlCommand cmd = new SqlCommand(@"
+            UPDATE Scene
+            SET SceneTitle = @Title,
+                VideoPath = @VideoPath,
+                ImagePath = @ImagePath
+            WHERE SceneID = @ID");
 
-                string query = @"
-        UPDATE Scene
-        SET SceneTitle=@Title,
-            VideoPath=@VideoPath,
-            ImagePath=@ImagePath
-        WHERE SceneID=@ID";
+            cmd.Parameters.AddWithValue("@Title", title);
+            cmd.Parameters.AddWithValue("@VideoPath", videoPath);
+            cmd.Parameters.AddWithValue("@ImagePath", imagePath);
+            cmd.Parameters.AddWithValue("@ID", sceneID);
 
-                SqlCommand cmd = new SqlCommand(query, con);
-
-                cmd.Parameters.AddWithValue("@Title", title);
-                cmd.Parameters.AddWithValue("@VideoPath", videoPath);
-                cmd.Parameters.AddWithValue("@ImagePath", ImagePath);
-                cmd.Parameters.AddWithValue("@ID", sceneID);
-
-                cmd.ExecuteNonQuery();
-            }
+            ExecuteNonQuery(cmd);
         }
 
+        // Get all scenes for a specific phase template, ordered by display order
         public DataTable GetScenesByPhaseTemplate(int phaseTemplateID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = @"
-                    SELECT SceneID,
-                       SceneTitle,
-                       VideoPath,
-                       ImagePath,
-                       DisplayOrder
-                FROM Scene
-                WHERE PhaseTemplateID = @PhaseTemplateID
-                ORDER BY DisplayOrder";
+            SqlCommand cmd = new SqlCommand(@"
+            SELECT SceneID, SceneTitle, VideoPath, ImagePath, DisplayOrder
+            FROM Scene
+            WHERE PhaseTemplateID = @PhaseTemplateID
+            ORDER BY DisplayOrder");
 
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
-                da.SelectCommand.Parameters.AddWithValue("@PhaseTemplateID", phaseTemplateID);
+            cmd.Parameters.AddWithValue("@PhaseTemplateID", phaseTemplateID);
 
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                return dt;
-            }
+            return ExecuteQuery(cmd);
         }
 
+        // Get the next display order for a new scene within a specific phase template
         public int GetNextSceneOrder(int phaseTemplateID)
         {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                con.Open();
-
-                string query = @"
+            SqlCommand cmd = new SqlCommand(@"
             SELECT ISNULL(MAX(DisplayOrder),0) + 1
             FROM Scene
-            WHERE PhaseTemplateID = @PhaseTemplateID";
+            WHERE PhaseTemplateID = @PhaseTemplateID");
 
-                SqlCommand cmd = new SqlCommand(query, con);
-                cmd.Parameters.AddWithValue("@PhaseTemplateID", phaseTemplateID);
+            cmd.Parameters.AddWithValue("@PhaseTemplateID", phaseTemplateID);
 
-                return (int)cmd.ExecuteScalar();
-            }
+            return (int)ExecuteScalar(cmd);
         }
+
+        // Get a single scene by its ID
+        public DataRow GetSceneByID(int sceneID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+            SELECT * FROM Scene WHERE SceneID = @ID");
+
+            cmd.Parameters.AddWithValue("@ID", sceneID);
+
+            DataTable dt = ExecuteQuery(cmd);
+
+            return dt.Rows.Count > 0 ? dt.Rows[0] : null;
+        }
+
+        // Delete a scene and all related decision points and options
         public void DeleteScene(int sceneID)
         {
             using (SqlConnection con = new SqlConnection(_connStr))
             {
                 con.Open();
 
-                SqlCommand cmd = new SqlCommand(
-                    "DELETE FROM Scene WHERE SceneID = @ID", con);
+                using (SqlTransaction tran = con.BeginTransaction())
+                {
+                    try
+                    {
+                        SqlCommand cmd1 = new SqlCommand(@"
+                    DELETE FROM [Option]
+                    WHERE DecisionPointID IN (
+                        SELECT DecisionPointID FROM DecisionPoint WHERE SceneID = @ID
+                    )", con, tran);
 
-                cmd.Parameters.AddWithValue("@ID", sceneID);
+                        cmd1.Parameters.AddWithValue("@ID", sceneID);
+                        cmd1.ExecuteNonQuery();
 
-                cmd.ExecuteNonQuery();
+                        SqlCommand cmd2 = new SqlCommand(
+                            "DELETE FROM DecisionPoint WHERE SceneID = @ID", con, tran);
+                        cmd2.Parameters.AddWithValue("@ID", sceneID);
+                        cmd2.ExecuteNonQuery();
+
+                        SqlCommand cmd3 = new SqlCommand(
+                            "DELETE FROM Dialogue WHERE SceneID = @ID", con, tran);
+                        cmd3.Parameters.AddWithValue("@ID", sceneID);
+                        cmd3.ExecuteNonQuery();
+
+                        SqlCommand cmd4 = new SqlCommand(
+                            "DELETE FROM Scene WHERE SceneID = @ID", con, tran);
+                        cmd4.Parameters.AddWithValue("@ID", sceneID);
+                        cmd4.ExecuteNonQuery();
+
+                        tran.Commit();
+                    }
+                    catch
+                    {
+                        tran.Rollback();
+                        throw;
+                    }
+                }
             }
         }
 
+        // Swap the display order of a scene with its adjacent scene (left/up or right/down)
         public void SwapSceneOrder(int sceneID, bool moveLeft)
         {
             using (SqlConnection con = new SqlConnection(_connStr))
@@ -257,28 +261,6 @@ namespace Simulation_Based_Learning.Repositories
                 }
             }
         }
-
-        public DataRow GetSceneByID(int sceneID)
-        {
-            using (SqlConnection con = new SqlConnection(_connStr))
-            {
-                string query = "SELECT * FROM Scene WHERE SceneID=@ID";
-
-                SqlDataAdapter da = new SqlDataAdapter(query, con);
-                da.SelectCommand.Parameters.AddWithValue("@ID", sceneID);
-
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-                if (dt.Rows.Count > 0)
-                    return dt.Rows[0];
-
-                return null;
-            }
-        }
-
-        
-
 
     }
 }
