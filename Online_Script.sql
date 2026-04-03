@@ -27,6 +27,9 @@ CREATE TABLE InteractionAudit (
     FOREIGN KEY (UserID) REFERENCES [User](UserID)
 );
 GO
+SELECT * FROM [User];
+SELECT * FROM InteractionAudit;
+GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
 --SIMULATION STRUCTURE, PhaseTemplate,SimulationPhase, Scene, Dialogue, Team, TeamMember, PlaythroughSession,CharacterSelection
@@ -40,7 +43,6 @@ CREATE TABLE Simulation (
     CreatedDate DATETIME DEFAULT GETDATE(),
     Status NVARCHAR(20) CHECK (Status IN ('Active','Completed')) NOT NULL
 );
-
 CREATE TABLE PhaseTemplate (
     PhaseTemplateID INT IDENTITY PRIMARY KEY,
     PhaseTitle NVARCHAR(200) NOT NULL,
@@ -70,6 +72,7 @@ CREATE TABLE Scene (
     DisplayOrder INT,
     PhaseTemplateID INT NOT NULL,
     VideoPath NVARCHAR(500) NULL,
+    ImagePath NVARCHAR(500) NULL,
     FOREIGN KEY (PhaseID) REFERENCES Phase(PhaseID)
 );
 ALTER TABLE Scene
@@ -95,8 +98,6 @@ CREATE TABLE Team (
         REFERENCES Simulation(SimulationID)
         ON DELETE CASCADE
 );
-ALTER TABLE TeamMember
-ADD CONSTRAINT UQ_Team_User UNIQUE (TeamID, UserID);
 
 CREATE TABLE TeamMember (
     TeamMemberID INT IDENTITY(1,1) PRIMARY KEY,
@@ -108,6 +109,8 @@ CREATE TABLE TeamMember (
     FOREIGN KEY (UserID)
         REFERENCES [User](UserID)
 );
+ALTER TABLE TeamMember
+ADD CONSTRAINT UQ_Team_User UNIQUE (TeamID, UserID);
 
 CREATE TABLE PlaythroughSession (
     SessionID INT IDENTITY PRIMARY KEY,
@@ -132,6 +135,17 @@ CREATE TABLE CharacterSelection (
 );
 ALTER TABLE CharacterSelection
 ADD CONSTRAINT UQ_Session_Character UNIQUE (SessionID, CharacterName);
+GO
+SELECT * FROM Simulation;
+SELECT * FROM PhaseTemplate;
+SELECT * FROM SimulationPhase;
+SELECT * FROM Scene;
+SELECT * FROM Dialogue;
+SELECT * FROM Team;
+SELECT * FROM TeamMember;
+SELECT * FROM Scene;
+SELECT * FROM PlaythroughSession;
+SELECT * FROM CharacterSelection;
 GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
@@ -187,6 +201,11 @@ CREATE TABLE TeamDecision (
     FOREIGN KEY (SelectedOptionID) REFERENCES [Option](OptionID)
 );
 GO
+SELECT * FROM DecisionPoint;
+SELECT * FROM [Option];
+SELECT * FROM PlayerDecision;
+SELECT * FROM TeamDecision;
+GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
 --ATTRIBUTE & CLUSTER ENGINE, OptionAttributeEffect, ClusterAttribute
@@ -218,6 +237,11 @@ CREATE TABLE ClusterAttribute (
     FOREIGN KEY (ClusterID) REFERENCES Cluster(ClusterID),
     FOREIGN KEY (AttributeID) REFERENCES Attribute(AttributeID)
 );
+GO
+SELECT * FROM Attribute;
+SELECT * FROM OptionAttributeEffect;
+SELECT * FROM Cluster;
+SELECT * FROM ClusterAttribute;
 GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
@@ -254,7 +278,219 @@ CREATE TABLE ReportCluster (
     FOREIGN KEY (ClusterBandDefinitionID) REFERENCES ClusterBandDefinition(ClusterBandDefinitionID)
 );
 GO
+SELECT * FROM Report;
+SELECT * FROM ClusterBandDefinition;
+SELECT * FROM ReportCluster;
+GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
+-- STORED PROCEDURES, GetSceneBundle
+--*****************************************************************************************************************************************--
+--*****************************************************************************************************************************************--
+CREATE PROCEDURE GetSceneBundle
+    @SessionID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT 
+        s.SceneID,
+        s.SceneTitle,
+        s.VideoPath,
+        s.ImagePath,
+
+        d.Dialogue,
+        d.Speaker,
+        d.DisplayOrder AS DialogueOrder,
+
+        dp.DecisionPointID,
+        dp.DecisionPrompt,
+
+        o.OptionID,
+        o.OptionText
+
+    FROM PlaythroughSession ps
+
+    INNER JOIN Scene s 
+        ON ps.CurrentSceneID = s.SceneID
+
+    LEFT JOIN Dialogue d 
+        ON s.SceneID = d.SceneID
+
+    LEFT JOIN DecisionPoint dp 
+        ON s.SceneID = dp.SceneID
+
+    LEFT JOIN [Option] o 
+        ON dp.DecisionPointID = o.DecisionPointID
+
+    WHERE ps.SessionID = @SessionID
+
+    ORDER BY d.DisplayOrder, o.OptionID
+END GO
+GO
+--*****************************************************************************************************************************************--
+--*****************************************************************************************************************************************--
+ALTER PROCEDURE SubmitDecisionAndAdvance
+    @SessionID INT,
+    @UserID INT,
+    @DecisionPointID INT,
+    @OptionID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    --Insert decision
+    IF NOT EXISTS (
+        SELECT 1 FROM PlayerDecision
+        WHERE SessionID = @SessionID
+        AND UserID = @UserID
+        AND DecisionPointID = @DecisionPointID
+    )
+    BEGIN
+        INSERT INTO PlayerDecision (SessionID, UserID, DecisionPointID, OptionID)
+        VALUES (@SessionID, @UserID, @DecisionPointID, @OptionID)
+    END
+
+    --  Check if all submitted
+    DECLARE @Remaining INT
+
+    SELECT @Remaining = COUNT(*)
+    FROM TeamMember tm
+    INNER JOIN PlaythroughSession ps ON tm.TeamID = ps.TeamID
+    WHERE ps.SessionID = @SessionID
+    AND tm.UserID NOT IN (
+        SELECT UserID FROM PlayerDecision
+        WHERE SessionID = @SessionID
+        AND DecisionPointID = @DecisionPointID
+    )
+
+    IF @Remaining > 0
+    BEGIN
+        SELECT 'WAITING' AS Status
+        RETURN
+    END
+
+    --  CREATE TEAM DECISION (majority + tie-breaker)
+    IF NOT EXISTS (
+        SELECT 1 FROM TeamDecision
+        WHERE SessionID = @SessionID
+        AND DecisionPointID = @DecisionPointID
+    )
+    BEGIN
+        ;WITH VoteCounts AS (
+            SELECT 
+                OptionID,
+                COUNT(*) AS VoteCount,
+                MIN([Timestamp]) AS FirstPick
+            FROM PlayerDecision
+            WHERE SessionID = @SessionID
+            AND DecisionPointID = @DecisionPointID
+            GROUP BY OptionID
+        )
+        INSERT INTO TeamDecision (SessionID, DecisionPointID, SelectedOptionID)
+        SELECT TOP 1 @SessionID, @DecisionPointID, OptionID
+        FROM VoteCounts
+        ORDER BY VoteCount DESC, FirstPick ASC
+    END
+
+    --  Get decision result (for UI)
+    DECLARE @SelectedOptionID INT
+
+    SELECT TOP 1 @SelectedOptionID = SelectedOptionID
+    FROM TeamDecision
+    WHERE SessionID = @SessionID
+    AND DecisionPointID = @DecisionPointID
+
+    --  Determine next scene
+    DECLARE @NextSceneID INT
+    DECLARE @CurrentSceneID INT
+
+    SELECT TOP 1 @CurrentSceneID = CurrentSceneID 
+    FROM PlaythroughSession 
+    WHERE SessionID = @SessionID
+
+    -- Same phase
+    SELECT TOP 1 @NextSceneID = s2.SceneID
+    FROM Scene s1
+    INNER JOIN Scene s2 
+        ON s1.PhaseTemplateID = s2.PhaseTemplateID
+    WHERE s1.SceneID = @CurrentSceneID
+    AND s2.DisplayOrder > s1.DisplayOrder
+    ORDER BY s2.DisplayOrder
+
+
+    -- Get current phase order
+    DECLARE @CurrentPhaseOrder INT;
+
+    SELECT TOP 1 @CurrentPhaseOrder = sp.DisplayOrder
+    FROM Scene s
+    INNER JOIN SimulationPhase sp 
+        ON s.PhaseTemplateID = sp.PhaseTemplateID
+    WHERE s.SceneID = @CurrentSceneID;
+
+    -- Next phase
+    IF @NextSceneID IS NULL
+    BEGIN
+        SELECT TOP 1 @NextSceneID = s.SceneID
+        FROM Scene s
+        INNER JOIN SimulationPhase sp ON s.PhaseTemplateID = sp.PhaseTemplateID
+        WHERE sp.SimulationID = (
+            SELECT TOP 1 SimulationID 
+            FROM PlaythroughSession 
+            WHERE SessionID = @SessionID
+       
+        )
+        AND sp.DisplayOrder > @CurrentPhaseOrder
+    ORDER BY sp.DisplayOrder, s.DisplayOrder
+    END
+
+    --  HANDLE COMPLETION OR ADVANCE
+    IF @NextSceneID IS NULL
+    BEGIN
+        UPDATE PlaythroughSession
+        SET Status = 'Completed'
+        WHERE SessionID = @SessionID
+
+        SELECT 
+            'COMPLETED' AS Status,
+            o.OptionText,
+            a.AttributeName,
+            oae.EffectValue
+        FROM [Option] o
+        LEFT JOIN OptionAttributeEffect oae ON o.OptionID = oae.OptionID
+        LEFT JOIN Attribute a ON oae.AttributeID = a.AttributeID
+        WHERE o.OptionID = @SelectedOptionID
+
+        RETURN
+    END
+    ELSE
+    BEGIN
+        -- ADVANCE NOW (same SP like you want)
+        UPDATE PlaythroughSession
+        SET CurrentSceneID = @NextSceneID
+        WHERE SessionID = @SessionID
+
+        SELECT 
+            'RESOLVED' AS Status,
+            o.OptionText,
+            a.AttributeName,
+            oae.EffectValue
+        FROM [Option] o
+        LEFT JOIN OptionAttributeEffect oae ON o.OptionID = oae.OptionID
+        LEFT JOIN Attribute a ON oae.AttributeID = a.AttributeID
+        WHERE o.OptionID = @SelectedOptionID
+
+        RETURN
+    END
+END
+GO
+--*****************************************************************************************************************************************--
+--*****************************************************************************************************************************************--
+
+
+
+
+
+
 
 

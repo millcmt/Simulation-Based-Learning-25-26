@@ -9,6 +9,7 @@ using System.Security.Policy;
 using System.Web;
 using System.Web.UI;
 using System.Web.UI.WebControls;
+using static Simulation_Based_Learning.Repositories.PlaythroughRepository;
 
 namespace Simulation_Based_Learning
 {
@@ -21,23 +22,25 @@ namespace Simulation_Based_Learning
         // On page load, determine where the user is in the flow and show appropriate panel
         protected void Page_Load(object sender, EventArgs e)
         {
-            if (IsPostBack) return;
-
-            // Load simulations dropdown (ONLY once)
-            ddlSimulations.DataSource = sRepo.GetAllSimulations();
-            ddlSimulations.DataTextField = "Title";
-            ddlSimulations.DataValueField = "SimulationID";
-            ddlSimulations.DataBind();
-
-            // Check session for user/team/session status
-            int teamID = Convert.ToInt32(Session["TeamID"]);
-            int sessionID = Convert.ToInt32(Session["SessionID"]);
-
-            // Not logged in → redirect to login page
+            // Must be logged in
             if (Session["UserID"] == null)
             {
                 Response.Redirect("Authentication.aspx");
                 return;
+            }
+            // Handle delayed refresh (outside IsPostBack)
+            if (Request["__EVENTTARGET"] == "DelayedRedirect")
+            {
+                Response.Redirect(Request.RawUrl);
+            }
+            // Load simulations into dropdown on first load
+            if (!IsPostBack)
+            {
+                // Load dropdown once
+                ddlSimulations.DataSource = sRepo.GetAllSimulations();
+                ddlSimulations.DataTextField = "Title";
+                ddlSimulations.DataValueField = "SimulationID";
+                ddlSimulations.DataBind();
             }
             // No team → Join screen
             if (Session["TeamID"] == null)
@@ -45,32 +48,56 @@ namespace Simulation_Based_Learning
                 ShowPanel("Join");
                 return;
             }
-            //3. Has team but no session → Lobby
+            // Has team but no session → Lobby
+            int teamID = Convert.ToInt32(Session["TeamID"]);
             if (Session["SessionID"] == null)
             {
+                // No session yet → stay in lobby
                 ShowPanel("Lobby");
-                LoadPlayers();
+                LoadPlayers(); 
                 return;
             }
-
-            //load scene directly
-            LoadScene(sessionID);
+            // Sync game state to ensure correct panel is shown if player refreshes
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+            string currentPanel = ViewState["CurrentPanel"]?.ToString();
+            if (currentPanel == "Decision")
+            {
+                LoadDecision(sessionID);
+            }
+            else if (currentPanel == "Scene")
+            {
+                LoadScene(sessionID);
+            }
+            else
+            {
+                LoadScene(sessionID); // default
+            }  
         }
 
         // load players in lobby and display join code
         private void LoadPlayers()
         {
+            if (Session["TeamID"] == null) return;
+
             int teamID = Convert.ToInt32(Session["TeamID"]);
             var data = pRepo.GetTeamLobbyData(teamID);
+
+            // If joinCode failed → something wrong, stop
+            if (data.joinCode == null)
+            {
+                lblJoinError.Text = "Failed to load lobby.";
+                return;
+            }
+
             rptPlayers.DataSource = data.players;
             rptPlayers.DataBind();
             lblTeamCode.Text = data.joinCode;
         }
-
+        
         // load scene data and dialogue
         private void LoadScene(int sessionID)
         {
-            // 🔥 LOAD SCENE
+            // LOAD SCENE
             DataTable dt = pRepo.GetSceneBundle(sessionID);
 
             // If no scene data, something went wrong - stay on lobby
@@ -84,7 +111,7 @@ namespace Simulation_Based_Learning
             sceneSource.Src = first["VideoPath"].ToString();
             sceneImagePath.Src = first["ImagePath"].ToString();
             
-            // 🔥 LOAD DIALOGUE
+            // LOAD DIALOGUE
             var dialogue = dt.AsEnumerable()
                 .Where(r => r["Dialogue"] != DBNull.Value)
                 .Select(r => new
@@ -110,7 +137,7 @@ namespace Simulation_Based_Learning
             var first = dt.Rows[0];
             int sceneID = (int)first["SceneID"];
 
-            // 🔥 CHECK if decision exists (NO extra DB call)
+            // CHECK if decision exists (NO extra DB call)
             if (first["DecisionPointID"] != DBNull.Value)
             {
                 int decisionID = (int)first["DecisionPointID"];
@@ -121,7 +148,7 @@ namespace Simulation_Based_Learning
                 // Load decision prompt
                 lblDecisionQuestion.Text = first["DecisionPrompt"].ToString();
 
-                // 🔥 Extract options from SAME dataset
+                // Extract options from SAME dataset
                 var options = dt.AsEnumerable()
                     .Where(r => r["OptionID"] != DBNull.Value)
                     .Select(r => new
@@ -132,20 +159,15 @@ namespace Simulation_Based_Learning
                     .Distinct()
                     .ToList();
 
-                rblOptions.DataSource = options;
-                rblOptions.DataTextField = "OptionText";
-                rblOptions.DataValueField = "OptionID";
-                rblOptions.DataBind();
+                if (!IsPostBack || rblOptions.Items.Count == 0)
+                {
+                    rblOptions.DataSource = options;
+                    rblOptions.DataTextField = "OptionText";
+                    rblOptions.DataValueField = "OptionID";
+                    rblOptions.DataBind();
+                }
 
                 ShowPanel("Decision");
-            }
-            else
-            {
-                lblDecisionStatus.Text = "Waiting for next scene...";
-                // End simulation if no next scene
-                //pRepo.UpdateSessionStatus(sessionID, "Completed");
-                //ShowPanel("Lobby"); // or a "Simulation Complete" panel
-
             }
         }
 
@@ -160,12 +182,7 @@ namespace Simulation_Based_Learning
 
 
 
-        //  move from video to decision panel
-        protected void btnContinue_Click(object sender, EventArgs e)
-        {
-            int sessionID = Convert.ToInt32(Session["SessionID"]);
-            LoadDecision(sessionID);
-        }
+        
 
         // submit decision and check if all players have decided
         protected void btnSubmitDecision_Click(object sender, EventArgs e)
@@ -178,17 +195,36 @@ namespace Simulation_Based_Learning
             int optionID = int.Parse(rblOptions.SelectedValue);
 
             // This method both saves the decision and checks if all players have decided, returning the appropriate status
-            string status = pRepo.SubmitDecisionAndAdvance(sessionID, userID, decisionID, optionID);
+            var result = pRepo.SubmitDecisionAndAdvance(sessionID, userID, decisionID, optionID);
 
-            if (status == "WAITING")
+            if (result.Status == "WAITING")
             {
                 lblDecisionStatus.Text = "Decision submitted. Waiting for others...";
                 btnSubmitDecision.Enabled = false;
+                ShowPanel("Decision");
+                //        ScriptManager.RegisterStartupScript(this, GetType(), "poll",
+                //"setTimeout(function(){ __doPostBack('DelayedRedirect',''); }, 3000);", true);
             }
-            else if (status == "ADVANCED")
+            else if (result.Status == "RESOLVED")
             {
                 lblDecisionStatus.Text = "Advancing...";
-                Response.Redirect(Request.RawUrl);
+                rblOptions.Visible = false;
+                lblDecisionQuestion.Visible = false;
+                ShowTeamDecision(result);
+                // show result, then reload to next scene
+                ScriptManager.RegisterStartupScript(this, GetType(), "redirect",
+                "setTimeout(function(){ window.location = window.location.href; }, 3000);", true);
+                ////Response.Redirect(Request.RawUrl);
+            }
+            else if (result.Status == "COMPLETED")
+            {
+                lblDecisionStatus.Text = "Simulation completed.";
+                rblOptions.Visible = false;
+                lblDecisionQuestion.Visible = false;
+                ShowTeamDecision(result);
+                pRepo.UpdateSessionStatus(sessionID, "Completed");
+                ScriptManager.RegisterStartupScript(this, GetType(), "redirect",
+                    "setTimeout(function(){ window.location='Report.aspx'; }, 3000);", true);
             }
         }
 
@@ -196,16 +232,43 @@ namespace Simulation_Based_Learning
         protected void btnProceed_Click(object sender, EventArgs e)
         {
             int sessionID = Convert.ToInt32(Session["SessionID"]);
-            int decisionID = Convert.ToInt32(ViewState["DecisionID"]);
-            
+            int decisionID = pRepo.GetLatestDecisionID(sessionID);
+            //int decisionID = Convert.ToInt32(ViewState["DecisionID"]);
+
+
             int remaining = pRepo.HaveAllPlayersDecided(sessionID, decisionID);
-            if (remaining == 0)
+            string sessionStatus = pRepo.GetSessionStatus(sessionID);
+            var result = pRepo.GetLatestTeamDecision(sessionID, decisionID);
+
+            if (sessionStatus != "Completed")
             {
-                Response.Redirect(Request.RawUrl);
+                if (remaining == 0)
+                {
+                    lblDecisionStatus.Text = "Advancing...";
+                    
+                    ShowTeamDecision(result);
+                    btnProceed.Enabled = false;
+                    rblOptions.Visible = false;
+                    lblDecisionQuestion.Visible = false;
+                    // show result, then reload to next scene
+                    ScriptManager.RegisterStartupScript(this, GetType(), "redirect",
+                    "setTimeout(function(){ window.location = window.location.href; }, 3000);", true);
+                    ////Response.Redirect(Request.RawUrl);
+                }
+                else
+                {
+                    lblDecisionStatus.Text = $"Waiting for {remaining} player(s)...";
+                }
             }
             else
             {
-                lblDecisionStatus.Text = $"Waiting for {remaining} player(s)...";
+                lblDecisionStatus.Text = "Simulation completed.";
+                btnProceed.Enabled = false;
+                rblOptions.Visible = false;
+                lblDecisionQuestion.Visible = false;
+                ShowTeamDecision(result);
+                ScriptManager.RegisterStartupScript(this, GetType(), "redirect",
+                    "setTimeout(function(){ window.location='Report.aspx'; }, 3000);", true);
             }
         }
 
@@ -229,14 +292,17 @@ namespace Simulation_Based_Learning
                 lblJoinError.Text = "Enter a team name.";
                 return;
             }
+            lblJoinError.Text = $"Session in Session: {Session["SessionID"]}, user: {Session["UserID"]}";
 
             //Create team and add host as member
             int teamID = pRepo.CreateTeam(teamName);
             pRepo.AddMember(teamID, Convert.ToInt32(Session["UserID"]));
 
             Session["TeamID"] = teamID;
-
+            lblJoinError.Text = "before. ShowPanel";
             ShowPanel("Lobby");
+            lblJoinError.Text = "AFTER.";
+            lblJoinError.Text = $"TeamID in Session: {Session["TeamID"]}, user: {Session["UserID"]}";
             LoadPlayers();
         }
         // join team logic - validate code, add player to team, then show lobby
@@ -244,29 +310,32 @@ namespace Simulation_Based_Learning
         {
             // trim code ro get team the getting team by code and team ID then add member to team and show lobby
             string code = txtJoinCode.Text.Trim();
-            DataRow team = pRepo.GetTeamByJoinCode(code);
-            int teamID = Convert.ToInt32(team["TeamID"]);
+            int TeamID = pRepo.GetTeamByJoinCode(code);
 
+            lblJoinError.Text = $"DEBUG → , teamID in Session: {TeamID}, user: {Session["UserID"]}";
             // Validate code
-            if (team == null)
+            if (TeamID == 0)
             {
                 lblJoinError.Text = "Invalid team code.";
                 return;
             }
-            // Prevent joining if session already started
-            int sessionID = pRepo.GetActiveSessionID(teamID);
-            if (sessionID == 0)
-            {
-                lblCharacterStatus.Text = "Session not ready yet.";
-                return;
-            }
-            // Save session for later use
-            Session["SessionID"] = sessionID;
-            Session["TeamID"] = teamID;
+
+            Session["TeamID"] = TeamID;
+
+            
+            
 
             // Add player to team then show lobby and load players
-            pRepo.AddMember(teamID, Convert.ToInt32(Session["UserID"]));
+            if (Session["UserID"] == null)
+            {
+                lblJoinError.Text = "Session expired. Please log in again.";
+                return;
+            }
+
+            lblJoinError.Text = "BEFORE.";
+            pRepo.AddMember(TeamID, Convert.ToInt32(Session["UserID"]));
             ShowPanel("Lobby");
+            lblJoinError.Text = "AFTER.";
             LoadPlayers();
         }
         // Character selection logic - save character choice, check if all players have selected, then move to scene
@@ -356,11 +425,11 @@ namespace Simulation_Based_Learning
             }
         }
 
+
+
+
+
         
-
-
-
-
 
 
 
@@ -399,6 +468,18 @@ namespace Simulation_Based_Learning
             }
             ViewState["CurrentPanel"] = panel;
         }
+        // show team decision results and effects after all players have decided
+        private void ShowTeamDecision(DecisionResult result)
+        {
+            lblDecisionStatus.Text = "Team chose: " + result.OptionText;
+
+            gvEffects.DataSource = result.Effects;
+            gvEffects.DataBind();
+
+            gvEffects.Visible = true;
+        }
+
+
 
         // Utility buttons - Refresh to resync, Logout to clear session and go to login, Back to go back to lobby (if not host)
         protected void btnRefresh_Click(object sender, EventArgs e)
@@ -419,6 +500,13 @@ namespace Simulation_Based_Learning
             string panel = ViewState["CurrentPanel"]?.ToString();
             ShowPanel("Join");
         }
+        protected void btnContinue_Click(object sender, EventArgs e)
+        {
+            int sessionID = Convert.ToInt32(Session["SessionID"]);
+            LoadDecision(sessionID);
+        }
+        //  move from video to decision panel
+
 
 
         // Utility to get current player's character for styling dialogue bubbles
@@ -443,7 +531,6 @@ namespace Simulation_Based_Learning
             else
                 return "chat-left"; // others
         }
-
         // This method listens for postback events triggered by JavaScript (like video end) and acts accordingly
         protected override void RaisePostBackEvent(IPostBackEventHandler sourceControl, string eventArgument)
         {

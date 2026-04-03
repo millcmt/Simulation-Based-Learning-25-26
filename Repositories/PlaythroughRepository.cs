@@ -62,7 +62,7 @@ namespace Simulation_Based_Learning.Repositories
         }
 
         // SubmitDecisionAndAdvance allows a player to submit their decision for a given decision point and then checks if all players have made their decisions. If all players have decided, it advances the session to the next scene. The method returns a status string indicating whether the decision was recorded successfully and if the session has advanced.
-        public string SubmitDecisionAndAdvance(int sessionID, int userID, int decisionID, int optionID)
+        public DecisionResult SubmitDecisionAndAdvance(int sessionID, int userID, int decisionID, int optionID)
         {
             SqlCommand cmd = new SqlCommand("SubmitDecisionAndAdvance");
             cmd.CommandType = CommandType.StoredProcedure;
@@ -74,9 +74,71 @@ namespace Simulation_Based_Learning.Repositories
 
             DataTable dt = ExecuteQuery(cmd);
 
-            string status = dt.Rows[0]["Status"].ToString();
+            DecisionResult result = new DecisionResult();
 
-            return status;
+            if (dt.Rows.Count > 0)
+            {
+                result.Status = dt.Rows[0]["Status"].ToString();
+
+                switch (result.Status)
+                {
+                    case "WAITING":
+                        // no option text
+                        break;
+
+                    case "RESOLVED":
+                    case "COMPLETED":
+                        if (dt.Columns.Contains("OptionText"))
+                            result.OptionText = dt.Rows[0]["OptionText"].ToString();
+                        break;
+                }
+
+                result.Effects = dt;
+            }
+
+            return result;
+        }
+
+        //  GetLatestTeamDecision 
+        public DecisionResult GetLatestTeamDecision(int sessionID, int decisionID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+                SELECT 
+                    'RESOLVED' AS Status,
+                    o.OptionText,
+                    a.AttributeName,
+                    oae.EffectValue
+                FROM TeamDecision td
+                JOIN [Option] o ON td.SelectedOptionID = o.OptionID
+                LEFT JOIN OptionAttributeEffect oae ON o.OptionID = oae.OptionID
+                LEFT JOIN Attribute a ON oae.AttributeID = a.AttributeID
+                WHERE td.SessionID = @SessionID
+                AND td.DecisionPointID = @DecisionPointID
+            ");
+
+            cmd.Parameters.AddWithValue("@SessionID", sessionID);
+            cmd.Parameters.AddWithValue("@DecisionPointID", decisionID);
+
+            DataTable dt = ExecuteQuery(cmd);
+
+            DecisionResult result = new DecisionResult();
+
+            if (dt.Rows.Count > 0)
+            {
+                result.Status = "RESOLVED";
+                result.OptionText = dt.Rows[0]["OptionText"].ToString();
+                result.Effects = dt;
+            }
+
+            return result;
+        }
+
+        // The class DecisionResult stores 
+        public class DecisionResult
+        {
+            public string Status { get; set; }
+            public string OptionText { get; set; }
+            public DataTable Effects { get; set; }
         }
 
         // HaveAllPlayersDecided checks if all players in the session have made their decisions for a specific decision point. It counts the number of players who have not yet submitted their decisions and returns that count. If the count is zero, it indicates that all players have decided, allowing the session to advance to the next scene.
@@ -87,16 +149,38 @@ namespace Simulation_Based_Learning.Repositories
             FROM TeamMember tm
             INNER JOIN PlaythroughSession ps ON tm.TeamID = ps.TeamID
             WHERE ps.SessionID = @SessionID
-            AND tm.UserID NOT IN (
-                SELECT UserID FROM PlayerDecision
-                WHERE SessionID = @SessionID
-                AND DecisionPointID = @DecisionPointID
+            AND NOT EXISTS (
+                SELECT 1
+                FROM PlayerDecision pd
+                WHERE pd.SessionID = @SessionID
+                AND pd.DecisionPointID = @DecisionPointID
+                AND pd.UserID = tm.UserID
             )");
 
             cmd.Parameters.AddWithValue("@SessionID", sessionID);
             cmd.Parameters.AddWithValue("@DecisionPointID", decisionID);
 
             return (int)ExecuteScalar(cmd); // returns remaining players
+        }
+
+        // Retrieves the most recent decision point ID for the specified session.
+        public int GetLatestDecisionID(int sessionID)
+        {
+            SqlCommand cmd = new SqlCommand(@"
+                SELECT TOP 1 DecisionPointID
+                FROM TeamDecision
+                WHERE SessionID = @SessionID
+                ORDER BY ResolutionTimestamp DESC
+            ");
+
+            cmd.Parameters.AddWithValue("@SessionID", sessionID);
+
+            object result = ExecuteScalar(cmd);
+
+            if (result == null || result == DBNull.Value)
+                return 0;
+
+            return Convert.ToInt32(result);
         }
 
         // UpdateSessionStatus updates the status of a playthrough session (e.g., 'Waiting', 'InProgress', 'Completed') based on the provided session ID. This method is typically called when the session state changes, such as when all players have made their decisions or when the session is completed. It executes an UPDATE statement to modify the session's status in the database.
@@ -106,6 +190,15 @@ namespace Simulation_Based_Learning.Repositories
             cmd.Parameters.AddWithValue("@Status", status);
             cmd.Parameters.AddWithValue("@SessionID", sessionID);  
             ExecuteNonQuery(cmd);
+        }
+
+        // GetSessionStatus gets status of a playthrough session
+        public string GetSessionStatus(int sessionID)
+        {
+            SqlCommand cmd = new SqlCommand(@"SELECT Status FROM PlaythroughSession WHERE SessionID = @SessionID");
+            cmd.Parameters.AddWithValue("@SessionID", sessionID);
+            object result = ExecuteScalar(cmd);
+            return result != null ? result.ToString() : null;
         }
 
         // CreateTeam creates a new team with the specified name and a generated join code. It inserts a new record into the Team table and returns the newly created TeamID. This method ensures that each team has a unique join code that players can use to join the team.
@@ -140,16 +233,16 @@ namespace Simulation_Based_Learning.Repositories
         }
 
         // GetTeamByJoinCode retrieves the team information based on a provided join code. It executes a SELECT query to find the team that matches the given join code and returns the team's data as a DataRow. If no team is found with the specified join code, it returns null.
-        public DataRow GetTeamByJoinCode(string code)
+        public int GetTeamByJoinCode(string code)
         {
             SqlCommand cmd = new SqlCommand(
-                "SELECT * FROM Team WHERE JoinCode = @code");
+                "SELECT TeamID FROM Team WHERE JoinCode = @code");
 
             cmd.Parameters.AddWithValue("@code", code);
 
-            DataTable dt = ExecuteQuery(cmd);
+            object result = ExecuteScalar(cmd);
 
-            return dt.Rows.Count > 0 ? dt.Rows[0] : null;
+            return result != null ? Convert.ToInt32(result) : 0;
         }
 
         // GetActiveSessionID checks if there is an active playthrough session for a given team. It looks for sessions that are not marked as 'Completed' and returns the most recent active session's ID. If no active session exists, it returns 0, indicating that the team can start a new session.
@@ -228,9 +321,9 @@ namespace Simulation_Based_Learning.Repositories
         public (int totalPlayers, int selectedPlayers) GetPlayerStatus(int teamID, int sessionID)
         {
             SqlCommand cmd = new SqlCommand(@"
-        SELECT 
-            (SELECT COUNT(*) FROM TeamMember WHERE TeamID = @team) AS TotalPlayers,
-            (SELECT COUNT(*) FROM CharacterSelection WHERE SessionID = @session) AS SelectedPlayers");
+            SELECT 
+                (SELECT COUNT(*) FROM TeamMember WHERE TeamID = @team) AS TotalPlayers,
+                (SELECT COUNT(*) FROM CharacterSelection WHERE SessionID = @session) AS SelectedPlayers");
 
             cmd.Parameters.AddWithValue("@team", teamID);
             cmd.Parameters.AddWithValue("@session", sessionID);
@@ -260,6 +353,12 @@ namespace Simulation_Based_Learning.Repositories
             cmd.Parameters.AddWithValue("@team", teamID);
 
             DataSet ds = ExecuteDataSet(cmd);
+
+            // 🛑 SAFETY CHECKS
+            if (ds.Tables.Count < 2 || ds.Tables[0].Rows.Count == 0)
+            {
+                return (null, new DataTable());
+            }
 
             string joinCode = ds.Tables[0].Rows[0]["JoinCode"].ToString();
             DataTable players = ds.Tables[1];

@@ -33,13 +33,13 @@ namespace Simulation_Based_Learning
         protected global::System.Web.UI.WebControls.Button btnLogout;
 
         /// <summary>
-        /// HiddenField1 control.
+        /// lblJoinError control.
         /// </summary>
         /// <remarks>
         /// Auto-generated field.
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
-        protected global::System.Web.UI.WebControls.HiddenField HiddenField1;
+        protected global::System.Web.UI.WebControls.Label lblJoinError;
 
         /// <summary>
         /// PanelJoinTeam control.
@@ -49,6 +49,15 @@ namespace Simulation_Based_Learning
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
         protected global::System.Web.UI.WebControls.Panel PanelJoinTeam;
+
+        /// <summary>
+        /// Button3 control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.Button Button3;
 
         /// <summary>
         /// txtJoinCode control.
@@ -85,15 +94,6 @@ namespace Simulation_Based_Learning
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
         protected global::System.Web.UI.WebControls.Button btnCreateTeam;
-
-        /// <summary>
-        /// lblJoinError control.
-        /// </summary>
-        /// <remarks>
-        /// Auto-generated field.
-        /// To modify move field declaration from designer file to code-behind file.
-        /// </remarks>
-        protected global::System.Web.UI.WebControls.Label lblJoinError;
 
         /// <summary>
         /// PanelLobby control.
@@ -292,6 +292,15 @@ namespace Simulation_Based_Learning
         /// To modify move field declaration from designer file to code-behind file.
         /// </remarks>
         protected global::System.Web.UI.WebControls.Button Button2;
+
+        /// <summary>
+        /// gvEffects control.
+        /// </summary>
+        /// <remarks>
+        /// Auto-generated field.
+        /// To modify move field declaration from designer file to code-behind file.
+        /// </remarks>
+        protected global::System.Web.UI.WebControls.GridView gvEffects;
 
         /// <summary>
         /// lblDecisionQuestion control.
