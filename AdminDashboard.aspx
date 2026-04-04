@@ -2,14 +2,13 @@
 <link rel="stylesheet" type="text/css" href="Main.css" />
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
-<head runat="server">
-    <title>Admin Dashboard</title>
-</head>
-
+<head runat="server">   <title>Admin Dashboard</title>  </head>
 <body>
 <form id="form1" runat="server">
-
 <div class="dashboard-container">
+
+     <%--LOGOUT BUTTON--%>
+    <asp:Button ID="btnLogout" runat="server" Text="Reset / Logout" OnClick="btnLogout_Click" CssClass="btn btn-danger" />
 
     <!-- HEADER CARDS -->
     <div class="dashboard-header">
@@ -586,6 +585,126 @@
             OnClick="btnAddAttribute_Click" />
 
         </asp:Panel>
+
+    <%-- Clusters Panel --%>
+    <asp:Panel ID="pnlClusters" runat="server" Visible="false" CssClass="dashboard-panel">
+
+    <div class="section-title">Cluster Management</div>
+
+        <!-- Add Cluster -->
+        <div style="margin-bottom:15px;">
+            <asp:TextBox ID="txtClusterName" runat="server" CssClass="form-control" Placeholder="Enter Cluster Name"></asp:TextBox>
+            <asp:Button ID="btnAddCluster" runat="server" Text="Add Cluster" CssClass="btn btn-primary" OnClick="btnAddCluster_Click" />
+        </div>
+
+        <!-- Cluster Table -->
+        <asp:GridView ID="gvClusters" runat="server" AutoGenerateColumns="false" 
+            CssClass="table"
+            DataKeyNames="ClusterID"
+            OnRowEditing="gvClusters_RowEditing"
+            OnRowUpdating="gvClusters_RowUpdating"
+            OnRowCancelingEdit="gvClusters_RowCancelingEdit"
+            OnRowDeleting="gvClusters_RowDeleting"
+            OnRowCommand="gvClusters_RowCommand">
+
+            <Columns>
+
+            <asp:BoundField DataField="ClusterID" HeaderText="ID" ReadOnly="true" />
+
+            <asp:TemplateField HeaderText="Cluster Name">
+                <ItemTemplate>
+                    <%# Eval("ClusterName") %>
+                </ItemTemplate>
+                <EditItemTemplate>
+                    <asp:TextBox ID="txtEditName" runat="server" Text='<%# Bind("ClusterName") %>' />
+                </EditItemTemplate>
+            </asp:TemplateField>
+            <asp:TemplateField HeaderText="Actions">
+                <ItemTemplate>
+                    <asp:Button ID="btnMap" runat="server" Text="Map Attributes"
+                        CommandName="MapAttributes"
+                        CommandArgument='<%# Eval("ClusterID") %>'
+                        CssClass="btn btn-secondary btn-sm" />
+                </ItemTemplate>
+            </asp:TemplateField>
+
+            <asp:CommandField ShowEditButton="true" ShowDeleteButton="true" />
+
+        </Columns>
+
+    </asp:GridView>
+
+    <!-- Attribute Mapping Section -->
+    <asp:Panel ID="pnlMapping" runat="server" Visible="false" CssClass="mapping-panel">
+
+        <h4>Map Attributes to Cluster</h4>
+
+        <asp:HiddenField ID="hfSelectedClusterID" runat="server" />
+
+        <asp:CheckBoxList ID="cblAttributes" runat="server" RepeatColumns="2"></asp:CheckBoxList>
+
+        <br />
+
+        <asp:Button ID="btnSaveMapping" runat="server" Text="Save Mapping" 
+            CssClass="btn btn-success" OnClick="btnSaveMapping_Click" />
+
+    </asp:Panel>
+
+</asp:Panel>
+
+    <%-- Band Definitions PANEL --%>
+    <asp:Panel ID="pnlBands" runat="server" CssClass="dashboard-panel" Visible="false">
+
+        <div class="section-title">Band Definitions</div>
+
+        <!-- Add New -->
+        <div style="margin-bottom:15px;">
+        
+            <asp:DropDownList ID="ddlCluster" runat="server"></asp:DropDownList>
+
+            <asp:DropDownList ID="ddlBand" runat="server">
+                <asp:ListItem Text="Low" Value="Low" />
+                <asp:ListItem Text="Moderate" Value="Moderate" />
+                <asp:ListItem Text="High" Value="High" />
+            </asp:DropDownList>
+
+            <asp:TextBox ID="txtNarrative" runat="server" Width="300px" Placeholder="Enter narrative"></asp:TextBox>
+
+            <asp:Button ID="btnAddBand" runat="server" Text="Add" OnClick="btnAddBand_Click" CssClass="btn btn-primary" />
+        </div>
+
+        <!-- Table -->
+        <asp:GridView ID="gvBands" runat="server"
+            AutoGenerateColumns="false"
+            DataKeyNames="ClusterBandDefinitionID"
+            OnRowEditing="gvBands_RowEditing"
+            OnRowUpdating="gvBands_RowUpdating"
+            OnRowCancelingEdit="gvBands_RowCancelingEdit"
+            OnRowDeleting="gvBands_RowDeleting">
+
+            <Columns>
+
+                <asp:BoundField DataField="ClusterName" HeaderText="Cluster" ReadOnly="true" />
+                <asp:BoundField DataField="BandLevel" HeaderText="Band" ReadOnly="true" />
+
+                <asp:TemplateField HeaderText="Narrative">
+                    <ItemTemplate>
+                        <%# Eval("OutputNarrative") %>
+                    </ItemTemplate>
+                    <EditItemTemplate>
+                        <asp:TextBox ID="txtEditNarrative" runat="server"
+                            Text='<%# Bind("OutputNarrative") %>' Width="300px" />
+                    </EditItemTemplate>
+                </asp:TemplateField>
+
+                <asp:CommandField ShowEditButton="true" ShowDeleteButton="true" />
+
+            </Columns>
+
+        </asp:GridView>
+
+    </asp:Panel>   
+
 
     <!-- REPORT PANEL -->
     <asp:Panel ID="pnlReports" runat="server" CssClass="dashboard-panel" Visible="false">

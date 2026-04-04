@@ -78,3 +78,102 @@
     font-weight: 600;
     color: #1e2a38;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.report-container {
+    max-width: 900px;
+    margin: 40px auto;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+.report-title {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.cluster-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transition: 0.2s ease;
+}
+
+    .cluster-card:hover {
+        transform: translateY(-3px);
+    }
+
+.cluster-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.band {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+}
+
+    /* Band Colors */
+    .band.low {
+        background: #e74c3c;
+    }
+
+    .band.moderate {
+        background: #f39c12;
+    }
+
+    .band.high {
+        background: #2ecc71;
+    }
+
+.cluster-body {
+    margin-top: 15px;
+}
+
+.score {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.raw {
+    color: #777;
+    margin-bottom: 10px;
+}
+
+.narrative {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 10px;
+    line-height: 1.5;
+}

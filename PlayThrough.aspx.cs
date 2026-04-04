@@ -54,7 +54,8 @@ namespace Simulation_Based_Learning
             {
                 // No session yet → stay in lobby
                 ShowPanel("Lobby");
-                LoadPlayers(); 
+                LoadPlayers();
+                ScriptManager.RegisterStartupScript(this, GetType(), "poll", "setTimeout(function(){ __doPostBack('DelayedRedirect', ''); }, 5000);", true);
                 return;
             }
             // Sync game state to ensure correct panel is shown if player refreshes

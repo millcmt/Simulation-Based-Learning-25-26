@@ -71,7 +71,7 @@
 
             <!-- LOBBY PANEL -->
             <asp:Panel ID="PanelLobby" runat="server" CssClass="panel-card lobby-panel" Visible="false">
-
+                <asp:Button ID="Button4" runat="server" Text="Refresh" OnClick="btnRefresh_Click" />
                 <div class="lobby-header">
                     <h2>Team Lobby</h2>
                     <span class="status-badge">Waiting for players...</span>

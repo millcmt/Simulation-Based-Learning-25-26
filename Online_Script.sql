@@ -1,5 +1,7 @@
-USE Simulation-Based-Learning-26;
-GO
+--
+--
+--
+USE Simulation-Based-Learning-26; GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
 -- USER & ROLE STRUCTURE, InteractionAudit, 
@@ -208,7 +210,7 @@ SELECT * FROM TeamDecision;
 GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
---ATTRIBUTE & CLUSTER ENGINE, OptionAttributeEffect, ClusterAttribute
+--ATTRIBUTE & CLUSTER ENGINE, OptionAttributeEffect, ClusterAttribute, ClusterBounds
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
 CREATE TABLE Attribute (
@@ -237,11 +239,27 @@ CREATE TABLE ClusterAttribute (
     FOREIGN KEY (ClusterID) REFERENCES Cluster(ClusterID),
     FOREIGN KEY (AttributeID) REFERENCES Attribute(AttributeID)
 );
+CREATE TABLE ClusterBounds (
+    ClusterID INT PRIMARY KEY,
+
+    TotalOccurrences INT,   
+    MaxEffect INT,          
+
+    MinScore INT,
+    MaxScore INT,
+    RangeScore INT,
+
+    LowUpper FLOAT,
+    ModerateUpper FLOAT,
+
+    FOREIGN KEY (ClusterID) REFERENCES Cluster(ClusterID)
+);
 GO
 SELECT * FROM Attribute;
 SELECT * FROM OptionAttributeEffect;
 SELECT * FROM Cluster;
 SELECT * FROM ClusterAttribute;
+SELECT * FROM ClusterBounds;
 GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
@@ -250,13 +268,14 @@ GO
 --*****************************************************************************************************************************************--
 CREATE TABLE Report (
     ReportID INT IDENTITY(1,1) PRIMARY KEY,
-    SimulationID INT NOT NULL,
+    SessionID INT NULL,
     GeneratedDate DATETIME DEFAULT GETDATE(),
     TeamID INT NULL,
-    FOREIGN KEY (SimulationID) REFERENCES Simulation(SimulationID)
+    FOREIGN KEY (SessionID) REFERENCES PlaythroughSession(SessionID),
+    FOREIGN KEY (TeamID) REFERENCES Team(TeamID) ON DELETE CASCADE
 );
-ALTER TABLE Report ADD CONSTRAINT FK_Report_Team
-FOREIGN KEY (TeamID) REFERENCES Team(TeamID) ON DELETE CASCADE;
+ALTER TABLE Report
+ADD CONSTRAINT UQ_Report_Session UNIQUE (SessionID)
 
 CREATE TABLE ClusterBandDefinition (
     ClusterBandDefinitionID INT IDENTITY(1,1) PRIMARY KEY,
@@ -271,6 +290,7 @@ CREATE TABLE ReportCluster (
     ReportID INT NOT NULL,
     ClusterID INT NOT NULL,
     RawScore INT,
+    NormalizedScore FLOAT,
     Band NVARCHAR(20),
     ClusterBandDefinitionID INT,
     FOREIGN KEY (ReportID) REFERENCES Report(ReportID),
@@ -330,7 +350,7 @@ END GO
 GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
-ALTER PROCEDURE SubmitDecisionAndAdvance
+CREATE PROCEDURE SubmitDecisionAndAdvance
     @SessionID INT,
     @UserID INT,
     @DecisionPointID INT,
@@ -486,7 +506,6 @@ END
 GO
 --*****************************************************************************************************************************************--
 --*****************************************************************************************************************************************--
-
 
 
 

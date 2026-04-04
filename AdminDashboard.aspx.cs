@@ -1,6 +1,8 @@
 ﻿using Simulation_Based_Learning.Repositories;
 using System;
+using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Web.UI;
 using System.Web.UI.WebControls;
 
@@ -16,7 +18,7 @@ namespace Simulation_Based_Learning
         private SceneRepository sceneRepo = new SceneRepository();
         private DialogueRepository dialogueRepo = new DialogueRepository();
         private DecisionRepository DecisionRepo = new DecisionRepository();
-
+        private ReportRepository reportRepo = new ReportRepository();
 
 
 
@@ -33,6 +35,8 @@ namespace Simulation_Based_Learning
             {
                 pnlSimulations.Visible = true;
                 LoadSimulations();
+                LoadClusters();
+                LoadBands();
             }
 
             if (ViewState["SelectedPhaseTitle"] != null)
@@ -114,6 +118,60 @@ namespace Simulation_Based_Learning
             ddlAttributes.DataValueField = "AttributeID";
             ddlAttributes.DataBind();
         }
+
+        private void LoadClusters()
+        {
+            gvClusters.DataSource = reportRepo.GetAllClusters();
+            gvClusters.DataBind();
+            ddlCluster.DataSource = reportRepo.GetAllClusters();
+            ddlCluster.DataTextField = "ClusterName";
+            ddlCluster.DataValueField = "ClusterID";
+            ddlCluster.DataBind();
+        }
+        private void LoadAttributes(int clusterID)
+        {
+            var allAttributes = reportRepo.GetAllAttributes();
+            var mapped = reportRepo.GetClusterAttributes(clusterID);
+
+            cblAttributes.Items.Clear();
+
+            foreach (DataRow row in allAttributes.Rows)
+            {
+                string id = row["AttributeID"].ToString();
+                string name = row["AttributeName"].ToString();
+
+                ListItem item = new ListItem(name, id);
+
+                // Check if already mapped
+                if (mapped.AsEnumerable().Any(r => r["AttributeID"].ToString() == id))
+                {
+                    item.Selected = true;
+                }
+
+                cblAttributes.Items.Add(item);
+            }
+        }
+        private void ComputeClusterBounds(int clusterID)
+        {
+            int T = reportRepo.GetTotalOccurrences(clusterID);
+            if (T == 0) return;
+            int Emax = 3;
+
+            int max = T * Emax;
+            int min = -(T * Emax);
+            int range = max - min;
+
+            double lowUpper = min + (range * 0.3333);
+            double moderateUpper = min + (range * 0.6666);
+
+            reportRepo.SaveClusterBounds(clusterID, T, Emax, min, max, range, lowUpper, moderateUpper);
+        }
+        private void LoadBands()
+        {
+            gvBands.DataSource = reportRepo.GetAllBandDefinitions();
+            gvBands.DataBind();
+        }
+
 
 
 
@@ -457,7 +515,83 @@ namespace Simulation_Based_Learning
                 LoadEffects((int)ViewState["CurrentOptionID"]);
             }
         }
+        protected void gvClusters_RowEditing(object sender, GridViewEditEventArgs e)
+        {
+            gvClusters.EditIndex = e.NewEditIndex;
+            LoadClusters();
+        }
 
+        protected void gvClusters_RowCancelingEdit(object sender, GridViewCancelEditEventArgs e)
+        {
+            gvClusters.EditIndex = -1;
+            LoadClusters();
+        }
+
+        protected void gvClusters_RowUpdating(object sender, GridViewUpdateEventArgs e)
+        {
+            int clusterID = Convert.ToInt32(gvClusters.DataKeys[e.RowIndex].Value);
+
+            TextBox txtName = (TextBox)gvClusters.Rows[e.RowIndex].FindControl("txtEditName");
+            string newName = txtName.Text.Trim();
+
+            reportRepo.UpdateCluster(clusterID, newName);
+
+            gvClusters.EditIndex = -1;
+            LoadClusters();
+        }
+        protected void gvClusters_RowDeleting(object sender, GridViewDeleteEventArgs e)
+        {
+            int clusterID = Convert.ToInt32(gvClusters.DataKeys[e.RowIndex].Value);
+
+            reportRepo.DeleteCluster(clusterID);
+
+            LoadClusters();
+        }
+        protected void gvClusters_RowCommand(object sender, GridViewCommandEventArgs e)
+        {
+            if (e.CommandName == "MapAttributes")
+            {
+                int clusterID = Convert.ToInt32(e.CommandArgument);
+
+                hfSelectedClusterID.Value = clusterID.ToString();
+
+                LoadAttributes(clusterID);
+
+                pnlMapping.Visible = true;
+            }
+        }
+        protected void gvBands_RowEditing(object sender, GridViewEditEventArgs e)
+        {
+            gvBands.EditIndex = e.NewEditIndex;
+            LoadBands();
+        }
+
+        protected void gvBands_RowCancelingEdit(object sender, GridViewCancelEditEventArgs e)
+        {
+            gvBands.EditIndex = -1;
+            LoadBands();
+        }
+
+        protected void gvBands_RowUpdating(object sender, GridViewUpdateEventArgs e)
+        {
+            int id = Convert.ToInt32(gvBands.DataKeys[e.RowIndex].Value);
+
+            TextBox txt = (TextBox)gvBands.Rows[e.RowIndex].FindControl("txtEditNarrative");
+            string narrative = txt.Text.Trim();
+
+            reportRepo.UpdateBand(id, narrative);
+
+            gvBands.EditIndex = -1;
+            LoadBands();
+        }
+        protected void gvBands_RowDeleting(object sender, GridViewDeleteEventArgs e)
+        {
+            int id = Convert.ToInt32(gvBands.DataKeys[e.RowIndex].Value);
+
+            reportRepo.DeleteBand(id);
+
+            LoadBands();
+        }
 
 
 
@@ -696,10 +830,56 @@ namespace Simulation_Based_Learning
             LoadEffects(optionID);
         }
 
+        protected void btnAddCluster_Click(object sender, EventArgs e)
+        {
+            string name = txtClusterName.Text.Trim();
 
+            if (!string.IsNullOrEmpty(name))
+            {
+                reportRepo.InsertCluster(name);
+                txtClusterName.Text = "";
+                LoadClusters();
+            }
+        }
 
+        protected void btnSaveMapping_Click(object sender, EventArgs e)
+        {
+            int clusterID = Convert.ToInt32(hfSelectedClusterID.Value);
 
+            List<int> selectedAttributes = new List<int>();
 
+            foreach (ListItem item in cblAttributes.Items)
+            {
+                if (item.Selected)
+                {
+                    selectedAttributes.Add(Convert.ToInt32(item.Value));
+                }
+            }
+
+            // Save mapping
+            reportRepo.SaveClusterAttributes(clusterID, selectedAttributes);
+
+            // 🔥 Auto compute bounds
+            ComputeClusterBounds(clusterID);
+
+            pnlMapping.Visible = false;
+
+            // Optional reload
+            LoadClusters();
+        }
+        protected void btnAddBand_Click(object sender, EventArgs e)
+        {
+            int clusterID = Convert.ToInt32(ddlCluster.SelectedValue);
+            string band = ddlBand.SelectedValue;
+            string narrative = txtNarrative.Text.Trim();
+
+            if (!string.IsNullOrEmpty(narrative))
+            {
+                reportRepo.InsertBand(clusterID, band, narrative);
+                txtNarrative.Text = "";
+                LoadBands();
+            }
+        }
 
 
 
@@ -724,6 +904,8 @@ namespace Simulation_Based_Learning
             pnlAttributeEffects.Visible = false;
             pnlReports.Visible = false;
             pnlAudit.Visible = false;
+            pnlClusters.Visible = false;
+            pnlBands.Visible = false;
 
             btnBack.Visible = panel != "Simulations";
 
@@ -759,6 +941,14 @@ namespace Simulation_Based_Learning
 
                 case "AttributeEffects":
                     pnlAttributeEffects.Visible = true;
+                    break;
+
+                case "Clusters":
+                    pnlClusters.Visible = true;
+                    break;
+
+                case "Bands":
+                    pnlBands.Visible = true;
                     break;
 
                 case "Reports":
@@ -803,12 +993,32 @@ namespace Simulation_Based_Learning
                     SetPanel("Options");
                     break;
 
+                case "Attributes":
+                    SetPanel("Simulations");
+                    break;
+
+                case "Clusters":
+                    SetPanel("Simulations");
+                    break;
+
+                case "Bands":
+                    SetPanel("Simulations");
+                    break;
+
                 default:
                     SetPanel("Simulations");
                     break;
             }
         }
+        protected void btnLogout_Click(object sender, EventArgs e)
+        {
+            // 🔥 Clear ALL session data
+            Session.Clear();
+            Session.Abandon();
 
+            // 🔥 Force full reload
+            Response.Redirect("Authentication.aspx");
+        }
 
         //header buttons to switch between different panels of the dashboard
         protected void ShowSimulations(object sender, EventArgs e) { SetPanel("Simulations"); }
@@ -816,8 +1026,8 @@ namespace Simulation_Based_Learning
         protected void ShowAudit(object sender, EventArgs e) { SetPanel("Audit"); }
 
         // footer buttons to switch between different panels of the dashboard
-        protected void ShowBands(object sender, EventArgs e) { SetPanel(""); }
-        protected void ShowClusters(object sender, EventArgs e) { SetPanel(""); }
+        protected void ShowBands(object sender, EventArgs e) { SetPanel("Bands"); }
+        protected void ShowClusters(object sender, EventArgs e) { SetPanel("Clusters"); }
         protected void ShowAttributes(object sender, EventArgs e) { LoadAttributes(); SetPanel("Attributes"); }
 
     }

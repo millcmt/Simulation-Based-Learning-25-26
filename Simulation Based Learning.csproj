@@ -123,6 +123,7 @@
     <Compile Include="Repositories\DialogueRepository.cs" />
     <Compile Include="Repositories\PhaseRepository.cs" />
     <Compile Include="Repositories\PlaythroughRepository.cs" />
+    <Compile Include="Repositories\ReportRepository.cs" />
     <Compile Include="Repositories\SceneRepository.cs" />
     <Compile Include="Repositories\SimulationRepository.cs" />
     <Compile Include="Repositories\UserRepository.cs" />
